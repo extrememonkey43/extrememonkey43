@@ -3,6 +3,7 @@ import WebKit
 /// Flips WebKit's internal feature switches — the same ones Safari shows under
 /// Settings ▸ Apps ▸ Safari ▸ Advanced ▸ Feature Flags. This is private API, looked up at
 /// runtime so a WebKit build without it simply does nothing.
+@MainActor
 enum WebKitTweaks {
     /// Safari's "Prefer Page Rendering Updates near 60fps". On by default, which caps page
     /// rendering (requestAnimationFrame, gamepad polling loops) at 60 Hz.
@@ -29,7 +30,7 @@ enum WebKitTweaks {
 
     static func setFeatures(_ changes: [String: Bool], on preferences: WKPreferences) -> [String] {
         guard !changes.isEmpty else { return [] }
-        let prefsClass: AnyObject = WKPreferences.self
+        let prefsClass = WKPreferences.self as AnyObject
         let keySelector = NSSelectorFromString("key")
         let collections = [
             ("_features", "_setEnabled:forFeature:"),

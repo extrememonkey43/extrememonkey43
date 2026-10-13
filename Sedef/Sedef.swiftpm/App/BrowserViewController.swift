@@ -352,7 +352,7 @@ final class BrowserViewController: UIViewController {
 
     // MARK: - Script messages
 
-    fileprivate func handle(message: WKScriptMessage) {
+    private func handle(message: WKScriptMessage) {
         guard let body = message.body as? [String: Any], let type = body["type"] as? String else { return }
         let payload = body["payload"]
         switch type {
@@ -493,6 +493,14 @@ extension BrowserViewController: WKUIDelegate {
     }
 }
 
+// MARK: - WKScriptMessageHandler
+
+extension BrowserViewController: WKScriptMessageHandler {
+    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+        handle(message: message)
+    }
+}
+
 // MARK: - Other delegates
 
 extension BrowserViewController: UIGestureRecognizerDelegate {
@@ -510,13 +518,13 @@ extension BrowserViewController: UIAdaptivePresentationControllerDelegate {
 
 /// WKUserContentController retains its handlers; this keeps it from retaining the view controller.
 private final class ScriptMessageProxy: NSObject, WKScriptMessageHandler {
-    weak var owner: BrowserViewController?
+    weak var target: (any WKScriptMessageHandler)?
 
-    init(_ owner: BrowserViewController) {
-        self.owner = owner
+    init(_ target: any WKScriptMessageHandler) {
+        self.target = target
     }
 
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
-        owner?.handle(message: message)
+        target?.userContentController(userContentController, didReceive: message)
     }
 }
