@@ -9,8 +9,9 @@ import Foundation
 /// 2. Session request: GeForce NOW asks its servers for a stream with a POST to
 ///    `https://<zone>.nvidiagrid.net/v2/session`. The body carries
 ///    `sessionRequestData.clientRequestMonitorSettings[0].framesPerSecond`. We rewrite that
-///    (and optionally the resolution) and report the device OS as WINDOWS in the
-///    `nv-device-os` header. This is the same trick desktop tools use, done inside the page.
+///    (and optionally the resolution), and on that request present the device headers
+///    (`nv-device-os`, `nv-device-type`, `nv-browser-type`, …) as a Windows PC with Chrome,
+///    because the server caps iPad/Safari clients at 60 FPS. Desktop tools use the same trick.
 /// 3. Fullscreen shim (Mac identity): the app is already full screen, but desktop GFN calls
 ///    `requestFullscreen()`, which WKWebView on iPad doesn't expose.
 /// 4. Text entry: tells the app when a text field is focused, so it can offer its own text
@@ -132,11 +133,38 @@ enum GFNScript {
     return JSON.stringify(body);
   }
 
-  // Replace the OS header wherever GFN sends it. Only the session request gets it added when
-  // missing: adding a custom header elsewhere could trigger a CORS preflight the server rejects.
+  // Device headers GFN's servers use to pick what a client may stream. On iPad they say
+  // IPADOS / TABLET / SAFARI / APPLE, which caps the stream at 60 FPS. CFG.serverProfile:
+  //   'ipad'          leave them alone
+  //   'windowsOS'     nv-device-os: WINDOWS
+  //   'windowsChrome' a Windows PC running Chrome on the session request (default)
+  // Values: null removes the header. Only the session request gets headers added when missing:
+  // adding custom headers elsewhere could trigger a CORS preflight the server rejects.
+  var CHROME_VERSION = '140.0.0.0';
+  function headerOverrides(isSession) {
+    var profile = CFG.serverProfile || 'ipad';
+    if (profile === 'ipad') return {};
+    var overrides = { 'nv-device-os': 'WINDOWS' };
+    if (profile === 'windowsChrome' && isSession) {
+      overrides['nv-device-type'] = 'DESKTOP';
+      overrides['nv-browser-type'] = 'CHROME';
+      overrides['nv-browser-version'] = CHROME_VERSION;
+      overrides['nv-device-make'] = null;
+      overrides['nv-device-model'] = null;
+    }
+    return overrides;
+  }
+  // Headers that are only rewritten when GFN sends them (never added).
+  var REPLACE_ONLY = { 'nv-browser-version': true };
+
   function rewriteHeaders(source, isSession) {
     var headers = new Headers(source == null ? undefined : source);
-    if (CFG.reportWindows && (isSession || headers.has('nv-device-os'))) headers.set('nv-device-os', 'WINDOWS');
+    var overrides = headerOverrides(isSession);
+    Object.keys(overrides).forEach(function (name) {
+      var value = overrides[name];
+      if (value === null) headers.delete(name);
+      else if (headers.has(name) || (isSession && !REPLACE_ONLY[name])) headers.set(name, value);
+    });
     return headers;
   }
 
@@ -192,22 +220,31 @@ enum GFNScript {
     var xhrSetHeader = xhrProto.setRequestHeader;
 
     xhrProto.open = function (method, url) {
-      try { flags.set(this, { api: isGridApi(url), session: isSessionUrl(url) }); } catch (e) {}
+      try {
+        var session = isSessionUrl(url);
+        flags.set(this, { api: isGridApi(url), session: session, overrides: headerOverrides(session), sent: {} });
+      } catch (e) {}
       return xhrOpen.apply(this, arguments);
     };
     xhrProto.setRequestHeader = function (name, value) {
       var f = flags.get(this);
-      if (f && f.api && CFG.reportWindows && String(name).toLowerCase() === 'nv-device-os') {
-        f.sentOs = true;
-        value = 'WINDOWS';
+      var key = String(name).toLowerCase();
+      if (f && f.api && Object.prototype.hasOwnProperty.call(f.overrides, key)) {
+        f.sent[key] = true;
+        if (f.overrides[key] === null) return;
+        value = f.overrides[key];
       }
       return xhrSetHeader.call(this, name, value);
     };
     xhrProto.send = function (body) {
       var f = flags.get(this);
       if (f && f.api) {
-        if (CFG.reportWindows && f.session && !f.sentOs) {
-          try { xhrSetHeader.call(this, 'nv-device-os', 'WINDOWS'); } catch (e) {}
+        if (f.session) {
+          for (var key in f.overrides) {
+            if (f.overrides[key] !== null && !f.sent[key] && !REPLACE_ONLY[key]) {
+              try { xhrSetHeader.call(this, key, f.overrides[key]); } catch (e) {}
+            }
+          }
         }
         if (f.session && typeof body === 'string') {
           var patched = rewriteBody(body);

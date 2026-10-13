@@ -114,15 +114,24 @@ function makeWindow(config, pageUrl = 'https://play.geforcenow.com/mall/') {
   return { window, fetchCalls, messages, FakeXHR, credentialCalls };
 }
 
-const defaultConfig = { fps: 120, identity: 'iPad', reportWindows: true };
+const defaultConfig = { fps: 120, identity: 'iPad', serverProfile: 'windowsChrome' };
 
-test('fetch: session request gets 120 FPS and the WINDOWS header', async () => {
+// Headers GeForce NOW sends from an iPad.
+const IPAD_HEADERS = {
+  'Content-Type': 'application/json',
+  'nv-client-type': 'BROWSER',
+  'nv-client-streamer': 'WEBRTC',
+  'nv-device-os': 'IPADOS',
+  'nv-device-type': 'TABLET',
+  'nv-browser-type': 'SAFARI',
+  'nv-browser-version': '26.0',
+  'nv-device-make': 'APPLE',
+  'nv-device-model': 'IPAD'
+};
+
+test('fetch: session request gets 120 FPS and Windows PC / Chrome device headers', async () => {
   const { window, fetchCalls, messages } = makeWindow(defaultConfig);
-  await window.fetch(SESSION_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'nv-device-os': 'IOS', 'nv-client-type': 'BROWSER' },
-    body: sessionBody()
-  });
+  await window.fetch(SESSION_URL, { method: 'POST', headers: IPAD_HEADERS, body: sessionBody() });
   assert.equal(fetchCalls.length, 1);
   const sent = JSON.parse(fetchCalls[0].body);
   const monitor = sent.sessionRequestData.clientRequestMonitorSettings[0];
@@ -130,9 +139,16 @@ test('fetch: session request gets 120 FPS and the WINDOWS header', async () => {
   assert.equal(monitor.widthInPixels, 1600, 'resolution untouched when not configured');
   assert.equal(monitor.heightInPixels, 1200);
   assert.equal(sent.sessionRequestData.appId, 100932911, 'other fields untouched');
-  assert.equal(fetchCalls[0].headers['nv-device-os'], 'WINDOWS');
-  assert.equal(fetchCalls[0].headers['nv-client-type'], 'BROWSER');
-  assert.equal(fetchCalls[0].headers['content-type'], 'application/json');
+  const headers = fetchCalls[0].headers;
+  assert.equal(headers['nv-device-os'], 'WINDOWS');
+  assert.equal(headers['nv-device-type'], 'DESKTOP');
+  assert.equal(headers['nv-browser-type'], 'CHROME');
+  assert.equal(headers['nv-browser-version'], '140.0.0.0');
+  assert.equal(headers['nv-device-make'], undefined);
+  assert.equal(headers['nv-device-model'], undefined);
+  assert.equal(headers['nv-client-type'], 'BROWSER');
+  assert.equal(headers['nv-client-streamer'], 'WEBRTC');
+  assert.equal(headers['content-type'], 'application/json');
   const session = messages.find((m) => m.type === 'session');
   assert.deepEqual(JSON.parse(JSON.stringify(session.payload)), { width: 1600, height: 1200, fps: 120, before: { width: 1600, height: 1200, fps: 60 } });
 });
@@ -183,7 +199,7 @@ test('fetch: non-session JSON on the session URL is not touched', async () => {
 });
 
 test('iPad identity with fps "leave alone" changes nothing', async () => {
-  const { window, fetchCalls } = makeWindow({ fps: 0, identity: 'iPad', reportWindows: false });
+  const { window, fetchCalls } = makeWindow({ fps: 0, identity: 'iPad', serverProfile: 'ipad' });
   const body = sessionBody();
   await window.fetch(SESSION_URL, { method: 'POST', headers: { 'nv-device-os': 'IOS' }, body });
   assert.equal(fetchCalls[0].body, body);
@@ -197,10 +213,16 @@ test('XMLHttpRequest session request is rewritten', () => {
   const xhr = new window.XMLHttpRequest();
   xhr.open('POST', SESSION_URL);
   xhr.setRequestHeader('nv-device-os', 'IOS');
+  xhr.setRequestHeader('nv-device-make', 'APPLE');
+  xhr.setRequestHeader('nv-browser-type', 'SAFARI');
   xhr.send(sessionBody());
   const sent = FakeXHR.sent[0];
   assert.equal(JSON.parse(sent.body).sessionRequestData.clientRequestMonitorSettings[0].framesPerSecond, 120);
   assert.equal(sent.headers['nv-device-os'], 'WINDOWS');
+  assert.equal(sent.headers['nv-browser-type'], 'CHROME');
+  assert.equal(sent.headers['nv-device-type'], 'DESKTOP', 'added when GFN did not send it');
+  assert.equal(sent.headers['nv-device-make'], undefined);
+  assert.equal(sent.headers['nv-browser-version'], undefined, 'version is only replaced, never added');
 
   const other = new window.XMLHttpRequest();
   other.open('GET', 'https://example.com/data');
@@ -308,4 +330,23 @@ test('aborting a passkey autofill request rejects it', async () => {
   const already = new AbortController();
   already.abort();
   await assert.rejects(window.navigator.credentials.get({ mediation: 'conditional', signal: already.signal }), (error) => error.name === 'AbortError');
+});
+
+test('windowsOS profile changes only the OS header', async () => {
+  const { window, fetchCalls } = makeWindow({ ...defaultConfig, serverProfile: 'windowsOS' });
+  await window.fetch(SESSION_URL, { method: 'POST', headers: IPAD_HEADERS, body: sessionBody() });
+  const headers = fetchCalls[0].headers;
+  assert.equal(headers['nv-device-os'], 'WINDOWS');
+  assert.equal(headers['nv-device-type'], 'TABLET');
+  assert.equal(headers['nv-browser-type'], 'SAFARI');
+  assert.equal(headers['nv-device-make'], 'APPLE');
+});
+
+test('device headers on other GFN API calls are only changed for the OS', async () => {
+  const { window, fetchCalls } = makeWindow(defaultConfig);
+  await window.fetch('https://prod.cloudmatchbeta.nvidiagrid.net/v2/serverInfo', { headers: IPAD_HEADERS });
+  const headers = fetchCalls[0].headers;
+  assert.equal(headers['nv-device-os'], 'WINDOWS');
+  assert.equal(headers['nv-device-type'], 'TABLET');
+  assert.equal(headers['nv-device-make'], 'APPLE');
 });

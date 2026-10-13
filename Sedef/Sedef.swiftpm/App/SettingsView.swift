@@ -16,7 +16,7 @@ struct SettingsView: View {
     @AppStorage(SettingsKey.fps) private var fps = BrowserSettings.defaults.fps
     @AppStorage(SettingsKey.resolution) private var resolutionID = BrowserSettings.defaults.resolutionID
     @AppStorage(SettingsKey.identity) private var identity = BrowserSettings.defaults.identity
-    @AppStorage(SettingsKey.reportWindows) private var reportWindows = BrowserSettings.defaults.reportWindows
+    @AppStorage(SettingsKey.serverProfile) private var serverProfile = BrowserSettings.defaults.serverProfile
     @AppStorage(SettingsKey.lockDisplay) private var lockDisplay = BrowserSettings.defaults.lockDisplay
     @AppStorage(SettingsKey.unlockWebKit) private var unlockWebKit = BrowserSettings.defaults.unlockWebKit
     @AppStorage(SettingsKey.modernCodecs) private var modernCodecs = BrowserSettings.defaults.modernCodecs
@@ -73,11 +73,15 @@ struct SettingsView: View {
                     Text(identity.title).tag(identity)
                 }
             }
-            Toggle("Sunucuya Windows olarak bildir", isOn: $reportWindows)
+            Picker("Sunucu profili", selection: $serverProfile) {
+                ForEach(ServerProfile.allCases) { profile in
+                    Text(profile.title).tag(profile)
+                }
+            }
         } header: {
             Text("Kimlik")
         } footer: {
-            Text("GeForce NOW iPad'de yalnızca ana ekrana eklenmiş uygulamadan oyun açar; \"iPad · ana ekran uygulaması\" bunu sağlar. Windows/Chrome taklidi GeForce NOW tarafından yakalanıyor, o yüzden yok. \"Sunucuya Windows olarak bildir\", 120 FPS isteğinin sunucuda kabul edilmesi için oturum isteğindeki cihaz bilgisini değiştirir; oyun açılmazsa bunu kapatıp dene.")
+            Text("Tarayıcı kimliği sitenin gördüğüdür: GeForce NOW iPad'de yalnızca ana ekrana eklenmiş uygulamadan oyun açar, \"iPad · ana ekran uygulaması\" bunu sağlar. Sunucu profili ise yalnızca oyun başlarken sunucuya giden istekteki cihaz bilgisidir; sunucu iPad/Safari'ye 60 FPS'ten fazlasını vermez. Oyun açılmazsa veya görüntü gelmezse bir alt seçeneği dene.")
         }
     }
 

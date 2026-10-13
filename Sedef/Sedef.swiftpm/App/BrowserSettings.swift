@@ -31,6 +31,27 @@ enum BrowserIdentity: String, CaseIterable, Identifiable {
     }
 }
 
+/// What the session request tells GeForce NOW's servers about the device. The servers cap
+/// iPad/Safari clients at 60 FPS, whatever the request asks for.
+enum ServerProfile: String, CaseIterable, Identifiable {
+    /// A Windows PC running Chrome: OS, device type, browser and version headers (default).
+    case windowsChrome
+    /// Only the OS header says Windows.
+    case windowsOS
+    /// Headers as GeForce NOW sent them (iPad).
+    case iPad = "ipad"
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .windowsChrome: return "Windows PC · Chrome"
+        case .windowsOS: return "Yalnızca işletim sistemi: Windows"
+        case .iPad: return "iPad (değiştirme)"
+        }
+    }
+}
+
 /// Stream resolution written into the GeForce NOW session request.
 struct StreamResolution: Identifiable, Hashable {
     let id: String
@@ -86,7 +107,9 @@ enum SettingsKey {
     static let fps = "sedef.fps"
     static let resolution = "sedef.resolution"
     static let identity = "sedef.identity"
-    static let reportWindows = "sedef.reportWindows"
+    static let serverProfile = "sedef.serverProfile"
+    /// Replaced by `serverProfile`; read once to carry an explicit "off" over.
+    static let legacyReportWindows = "sedef.reportWindows"
     static let lockDisplay = "sedef.lockDisplay"
     static let unlockWebKit = "sedef.unlockWebKit"
     static let modernCodecs = "sedef.modernCodecs"
@@ -103,7 +126,7 @@ struct BrowserSettings: Equatable {
     var fps: Int
     var resolutionID: String
     var identity: BrowserIdentity
-    var reportWindows: Bool
+    var serverProfile: ServerProfile
     var lockDisplay: Bool
     var unlockWebKit: Bool
     var modernCodecs: Bool
@@ -118,7 +141,7 @@ struct BrowserSettings: Equatable {
         fps: 120,
         resolutionID: StreamResolution.automatic.id,
         identity: .iPad,
-        reportWindows: true,
+        serverProfile: .windowsChrome,
         lockDisplay: true,
         unlockWebKit: true,
         modernCodecs: false,
@@ -137,7 +160,7 @@ struct BrowserSettings: Equatable {
             fps: store.object(forKey: SettingsKey.fps) == nil ? d.fps : store.integer(forKey: SettingsKey.fps),
             resolutionID: store.string(forKey: SettingsKey.resolution) ?? d.resolutionID,
             identity: store.string(forKey: SettingsKey.identity).flatMap(BrowserIdentity.init(rawValue:)) ?? d.identity,
-            reportWindows: bool(SettingsKey.reportWindows, d.reportWindows),
+            serverProfile: loadServerProfile(from: store, fallback: d.serverProfile),
             lockDisplay: bool(SettingsKey.lockDisplay, d.lockDisplay),
             unlockWebKit: bool(SettingsKey.unlockWebKit, d.unlockWebKit),
             modernCodecs: bool(SettingsKey.modernCodecs, d.modernCodecs),
@@ -146,6 +169,16 @@ struct BrowserSettings: Equatable {
             menuCorner: store.string(forKey: SettingsKey.menuCorner).flatMap(MenuCorner.init(rawValue:)) ?? d.menuCorner,
             homeURL: store.string(forKey: SettingsKey.homeURL) ?? d.homeURL
         )
+    }
+
+    private static func loadServerProfile(from store: UserDefaults, fallback: ServerProfile) -> ServerProfile {
+        if let raw = store.string(forKey: SettingsKey.serverProfile), let profile = ServerProfile(rawValue: raw) {
+            return profile
+        }
+        if store.object(forKey: SettingsKey.legacyReportWindows) != nil, !store.bool(forKey: SettingsKey.legacyReportWindows) {
+            return .iPad
+        }
+        return fallback
     }
 
     var homePageURL: URL {
@@ -162,7 +195,7 @@ struct BrowserSettings: Equatable {
         fps != other.fps
             || resolutionID != other.resolutionID
             || identity != other.identity
-            || reportWindows != other.reportWindows
+            || serverProfile != other.serverProfile
             || unlockWebKit != other.unlockWebKit
             || modernCodecs != other.modernCodecs
     }
@@ -171,7 +204,7 @@ struct BrowserSettings: Equatable {
         var config: [String: Any] = [
             "fps": fps,
             "identity": identity.rawValue,
-            "reportWindows": reportWindows,
+            "serverProfile": serverProfile.rawValue,
         ]
         if let size = StreamResolution.find(resolutionID).pixels(screenPixels: screenPixels) {
             config["width"] = size.width
