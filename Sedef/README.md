@@ -47,25 +47,33 @@ Sedef, sayfanın `fetch` ve `XMLHttpRequest` fonksiyonlarını sarar ve bu istek
 
 ## 3. Kurulum
 
-### Yol A: Swift Playgrounds (Mac gerekmez, ücretsiz) ✅ önerilen
+### Yol A: Xcode ile (Mac gerekir) ✅ önerilen
 
-1. App Store'dan **Swift Playgrounds**'u indir (Apple'ın ücretsiz uygulaması).
-2. `Sedef.swiftpm` klasörünü iPad'e al:
-   - GitHub'da depo sayfasında **Code ▸ Download ZIP**'e bas. **Dosyalar** uygulamasında zip'e dokununca açılır.
-   - Ya da sana gönderilen `Sedef.swiftpm.zip` dosyasını Dosyalar'da açarak.
-3. Dosyalar'da **`Sedef/Sedef.swiftpm`** öğesine dokun. Swift Playgrounds'ta açılır.
-4. Sağ üstteki **▶︎ (Çalıştır)** düğmesine bas, sonra uygulamayı tam ekrana al.
+Gerçek bir uygulama olarak kurulur: ana ekranda simgesi olur, klavye sorunsuz çalışır.
 
-Not: Playgrounds'ta yapılan uygulama ana ekrana ayrı bir simge olarak kurulmaz, Playgrounds'un içinden çalışır. Her seferinde Playgrounds'u açıp ▶︎'ye basman yeterli.
+1. Mac'te **Xcode**'u App Store'dan kur ve bir kez açıp ek bileşenleri yüklemesine izin ver.
+2. **`Sedef-Xcode.zip`** dosyasını aç (ya da GitHub'dan depoyu indir). İçindeki **`Sedef/Xcode/Sedef.xcodeproj`** dosyasına çift tıkla. `Sedef` klasörünün içindeki düzeni bozma; proje, kaynak kodları `Sedef/Sedef.swiftpm/App` klasöründen okur.
+3. Xcode'da sol üstte mavi **Sedef** projesine tıkla ▸ **Signing & Capabilities** sekmesi ▸ **Team** menüsünden kendi Apple hesabını seç (yoksa **Add an Account…** ile ekle; ücretsiz Apple ID yeterli, görünen adı "Personal Team").
+   - "Bundle identifier ... is not available" hatası çıkarsa **Bundle Identifier**'ın sonuna bir şey ekle, örneğin `io.github.extrememonkey43.sedef.yusuf`.
+4. iPad'i kabloyla Mac'e bağla, iPad'de **"Bu bilgisayara güven"** de.
+5. Xcode'un üst ortasındaki cihaz menüsünden **iPad'ini** seç ve **▶︎ (Run)** düğmesine bas.
+6. İlk seferde iPad'de:
+   - **Ayarlar ▸ Gizlilik ve Güvenlik ▸ Geliştirici Modu**'nu aç (iPad yeniden başlar).
+   - **Ayarlar ▸ Genel ▸ VPN ve Cihaz Yönetimi** ▸ kendi Apple ID'n ▸ **Güven**.
+   - Sonra Xcode'da tekrar ▶︎.
 
-### Yol B: IPA dosyası + yan yükleme (ana ekranda gerçek uygulama)
+Ücretsiz Apple ID ile kurulan uygulama **7 gün** çalışır. Süre dolunca iPad'i bağlayıp Xcode'da tekrar ▶︎'ye basman yeterli; giriş bilgilerin silinmez. Ücretli geliştirici hesabında bu süre 1 yıldır.
+
+### Yol B: IPA dosyası + yan yükleme (Windows PC ile de olur)
 
 1. GitHub'da depo ▸ **Actions** ▸ **Sedef** iş akışı ▸ son başarılı çalıştırma ▸ **Artifacts ▸ Sedef-ipa**. İçinden `Sedef.ipa` çıkar.
 2. Bir bilgisayarda **Sideloadly** ya da **AltStore/SideStore** ile kendi Apple ID'nle imzalayıp iPad'e yükle.
-3. iPad'de **Ayarlar ▸ Gizlilik ve Güvenlik ▸ Geliştirici Modu**'nu aç. **Ayarlar ▸ Genel ▸ VPN ve Cihaz Yönetimi**'nden kendi Apple ID'ne güven.
-4. Ücretsiz Apple ID ile imzalanan uygulamalar **7 günde bir** yeniden imzalanmalı. AltStore/SideStore bunu otomatik yapabilir.
+3. Yukarıdaki 6. adımdaki gibi Geliştirici Modu'nu aç ve Apple ID'ne güven.
+4. Ücretsiz Apple ID ile **7 günde bir** yeniden imzalanmalı; AltStore/SideStore bunu otomatik yapabilir.
 
-Mac'in varsa: `brew install xcodegen && cd Sedef/Xcode && xcodegen generate && open Sedef.xcodeproj`. Sonra Xcode'da kendi "Personal Team"ini seçip iPad'e doğrudan yükle.
+### Yol C: Swift Playgrounds (yalnızca deneme için) ⚠️
+
+`Sedef.swiftpm` Swift Playgrounds'ta da açılır ve çalışır. Ama Playgrounds'un içinde çalışan uygulamalarda **Apple'ın bilinen bir metin girişi hatası** var: klavye açılmayabiliyor ya da yazılanlar kutuya gitmeyebiliyor. Bu hata iPadOS 16'dan beri bildiriliyor ve iPadOS 27 / Playgrounds 4.7'de de görülüyor. Giriş yapman gerektiği için Yol A veya B'yi kullan.
 
 ---
 
@@ -127,6 +135,8 @@ Akışla ilgili ayarlar (FPS, çözünürlük, kimlik, kodek) değişince sayfa 
 | Giriş penceresi kapanmıyor | Sağ üstteki **✕** ile kapat; giriş yine tamamlanmış olur. |
 | Sitedeki bir metin kutusuna (ör. NVIDIA girişinde e-posta) dokununca klavye açılmıyor | Klavye açılmazsa altta yeşil **⌨︎ Yaz** düğmesi çıkar: dokun, iPad'in kendi kutusuna yaz, **Tamam**'a bas, yazdığın sayfadaki kutuya geçer. Aynı şey menüde **"Metin kutusuna yaz"** olarak da var. Apple Pencil ile dokunursan iPad klavye yerine el yazısı (Karalama) açar, parmakla dokun. |
 | **Oyunun içindeki** bir kutuya (ör. Steam girişi) dokununca klavye açılmıyor | O kutu bir web kutusu değil, yayındaki videonun parçası. Şimdilik Bluetooth/Magic Keyboard gibi fiziksel bir klavye kullan. |
+| Giriş yaptıktan sonra bir ekranda takılı kalıyor | Menü ▸ **Sayfa bilgisi**: başlığı ve adresi gösterir, **Adresi kopyala** ile kopyalayıp bana gönderebilirsin. Geçici çözüm: Ayarlar ▸ Kimlik ▸ **iPad · Safari** ile giriş yap, giriş bitince **Windows PC · Chrome**'a geri dön; oturumun açık kalması gerekir. |
+| Google/Apple ile giriş açılmıyor | Google, uygulama içi tarayıcılardan girişi engelliyor. NVIDIA hesabının e-posta ve parolasıyla gir. |
 | Kontrolcü görünmüyor | Sayfa açıkken kontrolcüde bir tuşa bas. Tarayıcılar kontrolcüyü ancak ilk tuşa basınca görür. |
 
 ---
@@ -136,7 +146,8 @@ Akışla ilgili ayarlar (FPS, çözünürlük, kimlik, kodek) değişince sayfa 
 - **Resmi değil.** NVIDIA web istemcisini değiştirirse Sedef'in istek değiştirme kısmı bozulabilir. Kullanım koşulları NVIDIA'nındır, sorumluluk kullanıcıdadır.
 - **Fare kilidi (pointer lock) yok.** iPadOS'taki WebKit henüz bu özelliği desteklemiyor. Bu yüzden FPS oyunlarında fareyle kamera çevirmek düzgün çalışmaz. **Kontrolcü önerilir.** Klavye çalışır.
 - **WebKit'in 60 FPS ayarı özel (private) API'dir.** Bu yüzden uygulama App Store'a uygun değil, kişisel kullanım içindir. Yeni iPadOS sürümleri bu ayarı yok sayabilir. Video akışı WebKit'te ayrı bir video katmanında gösterildiği için bu teoride 120 FPS'i engellemez. Gerçekte ne olduğunu HUD'daki **"ekranda"** değeri gösterir.
-- Kod bir Mac'te derlenip gerçek bir iPad'de test edilmedi. Swift Playgrounds bir hata gösterirse hata satırını bana gönder.
+- Kod her değişiklikte GitHub'da bir Mac üzerinde derleniyor, ama gerçek bir iPad'de ve gerçek bir GFN oturumunda test edilmedi. Bir sorun olursa menüdeki **Sayfa bilgisi** ekranını bana gönder.
+- Kimlik (Windows/Chrome) **yalnızca GeForce NOW sayfalarına** gösterilir. NVIDIA, Google, Apple gibi giriş sayfaları gerçek iPad Safari'sini görür; giriş sistemleri tutarsız kimliklere takılabildiği için böyle yapıldı.
 
 ---
 

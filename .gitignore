@@ -1,8 +1,8 @@
-# Xcode / XcodeGen output
-Sedef/Xcode/Sedef.xcodeproj/
-Sedef/Xcode/Generated/
+# Xcode / build output (the Sedef.xcodeproj itself is committed)
 Sedef/Xcode/build/
 Sedef/Xcode/Payload/
+Sedef/Xcode/build.log
 *.ipa
 xcuserdata/
+DerivedData/
 .DS_Store
