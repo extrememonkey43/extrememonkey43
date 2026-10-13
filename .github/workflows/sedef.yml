@@ -1,0 +1,76 @@
+name: Sedef
+
+on:
+  push:
+    paths:
+      - "Sedef/**"
+      - ".github/workflows/sedef.yml"
+  workflow_dispatch:
+
+jobs:
+  script-tests:
+    name: Injected script tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node --test Sedef/tests/*.test.mjs
+
+  ipa:
+    name: Build unsigned IPA
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Xcode version
+        run: xcodebuild -version
+
+      - name: Generate Xcode project
+        working-directory: Sedef/Xcode
+        run: |
+          brew install xcodegen
+          xcodegen generate
+
+      - name: Build
+        working-directory: Sedef/Xcode
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project Sedef.xcodeproj \
+            -target Sedef \
+            -configuration Release \
+            -sdk iphoneos \
+            SYMROOT="$PWD/build" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            build | tee build.log
+          echo "Swift warnings:"
+          grep -E "\.swift:[0-9]+:[0-9]+: warning" build.log | sort -u || true
+
+      - name: Package IPA
+        working-directory: Sedef/Xcode
+        run: |
+          rm -rf Payload
+          mkdir Payload
+          cp -R build/Release-iphoneos/Sedef.app Payload/
+          zip -qry "$GITHUB_WORKSPACE/Sedef.ipa" Payload
+          ls -lh "$GITHUB_WORKSPACE/Sedef.ipa"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Sedef-ipa
+          path: Sedef.ipa
+          if-no-files-found: error
+
+      # Informational: checks that the Swift Playgrounds package itself builds.
+      - name: Build Swift Playgrounds package
+        continue-on-error: true
+        working-directory: Sedef/Sedef.swiftpm
+        run: |
+          set -o pipefail
+          xcodebuild -list
+          xcodebuild -scheme Sedef -destination "generic/platform=iOS" -derivedDataPath "$RUNNER_TEMP/swiftpm" \
+            CODE_SIGNING_ALLOWED=NO build | tail -n 40

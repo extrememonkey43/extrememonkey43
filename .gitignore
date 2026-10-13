@@ -1,0 +1,8 @@
+# Xcode / XcodeGen output
+Sedef/Xcode/Sedef.xcodeproj/
+Sedef/Xcode/Generated/
+Sedef/Xcode/build/
+Sedef/Xcode/Payload/
+*.ipa
+xcuserdata/
+.DS_Store
