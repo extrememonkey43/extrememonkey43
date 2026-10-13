@@ -3,15 +3,15 @@ import Foundation
 /// JavaScript injected at document start into play.geforcenow.com.
 ///
 /// What it does, in order:
-/// 1. Identity: makes GeForce NOW believe it runs on a desktop (Windows/Chrome or Mac/Safari),
-///    so it stops applying its iPad/Safari limits (60 FPS, 1600×1200, H.264 only). Only on
-///    geforcenow.com; sign-in pages keep the real iPad identity.
+/// 1. Identity: GeForce NOW only streams on iPad from a Home Screen web app, so Sedef reports
+///    `navigator.standalone` (or, experimentally, looks like Mac Safari). Only on geforcenow.com;
+///    sign-in pages keep the plain iPad Safari.
 /// 2. Session request: GeForce NOW asks its servers for a stream with a POST to
 ///    `https://<zone>.nvidiagrid.net/v2/session`. The body carries
 ///    `sessionRequestData.clientRequestMonitorSettings[0].framesPerSecond`. We rewrite that
 ///    (and optionally the resolution) and report the device OS as WINDOWS in the
 ///    `nv-device-os` header. This is the same trick desktop tools use, done inside the page.
-/// 3. Fullscreen shim: the app is already full screen, but desktop GFN calls
+/// 3. Fullscreen shim (Mac identity): the app is already full screen, but desktop GFN calls
 ///    `requestFullscreen()`, which WKWebView on iPad doesn't expose.
 /// 4. Text entry: tells the app when a text field is focused, so it can offer its own text
 ///    prompt when the iPad keyboard doesn't come up, and fills the field with the result.
@@ -38,9 +38,9 @@ enum GFNScript {
   try { Object.defineProperty(window, '__sedefInstalled', { value: true }); } catch (e) {}
 
   CFG = CFG || {};
-  // The identity is only for GeForce NOW itself; sign-in pages keep the real iPad Safari.
+  // The identity is only for GeForce NOW itself; sign-in pages keep the plain iPad Safari.
   var onGeForceNow = /(^|\.)geforcenow\.com$/i.test(location.hostname);
-  var desktop = onGeForceNow && (CFG.identity === 'windowsChrome' || CFG.identity === 'macSafari');
+  var desktop = onGeForceNow && CFG.identity === 'macSafari';
 
   function post(type, payload) {
     try {
@@ -55,44 +55,27 @@ enum GFNScript {
   }
 
   /* ---------- 1. Identity ---------- */
+  // GeForce NOW fingerprints the engine and treats a Chrome/Windows disguise on WebKit as forged
+  // (it then refuses to stream), so only the checks of its own iPad and Mac Safari paths change.
   var navProto = window.Navigator && window.Navigator.prototype;
-  if (navProto && desktop) {
-    // iPadOS already reports a Mac user agent; GFN spots the iPad through touch points.
-    override(navProto, 'maxTouchPoints', 0);
-    override(navProto, 'platform', CFG.identity === 'windowsChrome' ? 'Win32' : 'MacIntel');
-  }
-  if (navProto && desktop && CFG.identity === 'windowsChrome') {
-    var major = String(CFG.chromeMajor || '140');
-    var brands = [
-      { brand: 'Chromium', version: major },
-      { brand: 'Google Chrome', version: major },
-      { brand: 'Not=A?Brand', version: '24' }
-    ];
-    var fullVersion = major + '.0.0.0';
-    var uaData = {
-      brands: brands,
-      mobile: false,
-      platform: 'Windows',
-      getHighEntropyValues: function () {
-        return Promise.resolve({
-          brands: brands,
-          mobile: false,
-          platform: 'Windows',
-          platformVersion: '15.0.0',
-          architecture: 'x86',
-          bitness: '64',
-          model: '',
-          wow64: false,
-          uaFullVersion: fullVersion,
-          fullVersionList: brands.map(function (b) {
-            return { brand: b.brand, version: b.brand === 'Not=A?Brand' ? '24.0.0.0' : fullVersion };
-          })
-        });
-      },
-      toJSON: function () { return { brands: brands, mobile: false, platform: 'Windows' }; }
-    };
-    override(navProto, 'vendor', 'Google Inc.');
-    override(navProto, 'userAgentData', uaData);
+  if (navProto && onGeForceNow) {
+    if (desktop) {
+      // Mac Safari: GeForce NOW tells iPad from Mac by touch points.
+      override(navProto, 'maxTouchPoints', 0);
+      override(navProto, 'platform', 'MacIntel');
+      if (!window.safari) {
+        try {
+          Object.defineProperty(window, 'safari', {
+            configurable: true,
+            value: { pushNotification: { permission: function () { return { permission: 'default' }; }, requestPermission: function () {} } }
+          });
+        } catch (e) {}
+      }
+    } else {
+      // iPad: GeForce NOW only streams from a Home Screen web app, which it detects through
+      // navigator.standalone. Sedef is full screen anyway.
+      override(navProto, 'standalone', true);
+    }
   }
 
   /* ---------- 2. Session request ---------- */

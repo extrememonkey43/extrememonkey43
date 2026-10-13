@@ -2,49 +2,29 @@ import Foundation
 import CoreGraphics
 
 /// How the browser introduces itself to GeForce NOW.
+///
+/// GeForce NOW fingerprints the browser engine (worker `navigator.platform`, system voices,
+/// `window.chrome`, …) and flags a Chrome/Windows disguise on WebKit as forged; it then drops the
+/// browser version and refuses to stream. So Sedef stays a real WebKit browser and only changes
+/// what GeForce NOW checks for its iPad and Mac Safari paths.
 enum BrowserIdentity: String, CaseIterable, Identifiable {
-    case windowsChrome
-    case macSafari
+    /// Real iPad Safari, presented as a Home Screen web app: GeForce NOW only streams on iPad
+    /// from one (`navigator.standalone`).
     case iPad
-
-    /// Keep in sync with the Chrome version in `userAgent`; the injected script mirrors it
-    /// in `navigator.userAgentData`.
-    static let chromeMajor = "140"
+    /// Mac Safari: no touch points, MacIntel platform, `window.safari`.
+    case macSafari
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
-        case .windowsChrome: return "Windows PC · Chrome"
-        case .macSafari: return "Mac · Safari"
-        case .iPad: return "iPad · Safari (değiştirme)"
+        case .iPad: return "iPad · ana ekran uygulaması"
+        case .macSafari: return "Mac · Safari (deneysel)"
         }
     }
 
-    /// User agent for GeForce NOW pages; nil keeps the real iPad Safari one.
-    /// `safariVersion` follows the OS (iPadOS 26 ships Safari 26).
-    func userAgent(safariVersion: String) -> String? {
-        switch self {
-        case .windowsChrome:
-            return "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/\(Self.chromeMajor).0.0.0 Safari/537.36"
-        case .macSafari:
-            return "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/\(safariVersion) Safari/605.1.15"
-        case .iPad:
-            return nil
-        }
-    }
-
-    /// `navigator.platform` for GeForce NOW pages; nil keeps the real one.
-    var navigatorPlatform: String? {
-        switch self {
-        case .windowsChrome: return "Win32"
-        case .macSafari: return "MacIntel"
-        case .iPad: return nil
-        }
-    }
-
-    /// The identity is only shown to GeForce NOW itself. Sign-in pages (NVIDIA, Google, Apple…)
-    /// see the real iPad Safari, which is what they are tested against.
+    /// Pages the identity is shown to. Sign-in pages (NVIDIA, Google, Apple…) always see the
+    /// plain iPad Safari.
     static func appliesTo(_ url: URL) -> Bool {
         guard let host = url.host?.lowercased() else { return false }
         return host == "geforcenow.com" || host.hasSuffix(".geforcenow.com")
@@ -137,7 +117,7 @@ struct BrowserSettings: Equatable {
     static let defaults = BrowserSettings(
         fps: 120,
         resolutionID: StreamResolution.automatic.id,
-        identity: .windowsChrome,
+        identity: .iPad,
         reportWindows: true,
         lockDisplay: true,
         unlockWebKit: true,
@@ -192,7 +172,6 @@ struct BrowserSettings: Equatable {
             "fps": fps,
             "identity": identity.rawValue,
             "reportWindows": reportWindows,
-            "chromeMajor": BrowserIdentity.chromeMajor,
         ]
         if let size = StreamResolution.find(resolutionID).pixels(screenPixels: screenPixels) {
             config["width"] = size.width

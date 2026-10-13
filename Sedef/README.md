@@ -13,7 +13,7 @@ Sedef, tek bir iş için yapılmış bir tarayıcı: **GeForce NOW'u (play.gefor
 | Katman | Sınırı koyan | Sedef'in çözümü |
 |---|---|---|
 | **1. Sunucuya giden istek** | GeForce NOW'un web sayfası, iPad'de çalıştığını anlayınca sunucudan **60 FPS** ister. | İstek iPad'den çıkmadan önce içindeki `framesPerSecond` alanını **120** yapar. |
-| **2. Kimlik** | Sayfa, tarayıcının iPad/Safari olduğunu `userAgent`, dokunmatik nokta sayısı gibi işaretlerden anlar. | Tarayıcı kendini **Windows PC'deki Chrome** olarak tanıtır. Sunucuya da `nv-device-os: WINDOWS` bilgisi gider. |
+| **2. Kimlik** | GFN iPad'de oyunu yalnızca **ana ekrana eklenmiş web uygulamasından** başlatır (`navigator.standalone`). Normal bir tarayıcıda "Streaming games is not supported" der. | Sedef kendini ana ekran uygulaması olarak bildirir; böylece GFN'nin resmî iPad yoluna girer. Oturum isteğinde sunucuya `nv-device-os: WINDOWS` gider. |
 | **3. Ekran** | ProMotion ekran, içerik az değişince pil için kendini 60 Hz veya altına düşürür. WebKit de sayfa çizimini varsayılan olarak 60 Hz'e yakın tutar. | Uygulama paneli sürekli **120 Hz**'de tutar (`CADisplayLink`). WebKit'in "60 FPS'e yakın çiz" ayarını da kapatır. |
 
 **Benzetme:** Restoranda garson (GFN sayfası) iPad'le geldiğini görünce sipariş fişine "60" yazıyor. Sedef, fiş mutfağa (NVIDIA sunucusu) gitmeden önce onu "120" yapıyor. Ama mutfak yine de **üyelik kartına** bakıyor: paketin 120 FPS'e izin vermiyorsa sunucu 60 gönderir. Yani Sedef sınırı kaldırır, ama paketinin hakkı olmayan bir şeyi veremez.
@@ -114,8 +114,8 @@ Akış 120 fps · ekranda 119 · 2560×1440 · H264
 |---|---|---|
 | Kare hızı | **120 FPS** | Oturum isteğine yazılan FPS. "GFN'ye bırak" seçilirse hiç değiştirilmez. |
 | Çözünürlük | Otomatik | GFN'nin seçtiği kalır. İstersen 2560×1440, 2048×1536 (iPad'in 4:3 oranı) gibi bir değer zorlayabilirsin. |
-| Tarayıcı kimliği | **Windows PC · Chrome** | Sınırları kaldıran ayar. Sorun olursa "Mac · Safari"yi dene. |
-| Sunucuya Windows olarak bildir | Açık | `nv-device-os: WINDOWS` başlığı. |
+| Tarayıcı kimliği | **iPad · ana ekran uygulaması** | GFN'nin resmî iPad yolu. "Mac · Safari (deneysel)" GFN'ye Mac gibi görünmeyi dener. |
+| Sunucuya Windows olarak bildir | Açık | Oturum isteğinde `nv-device-os: WINDOWS`; 120 FPS isteğinin sunucuda kabul edilmesi için. Oyun açılmazsa kapatıp dene. |
 | Ekranı 120 Hz'de tut | Açık | ProMotion'ı en yüksek hızda tutar. Biraz daha fazla pil harcar. |
 | WebKit 60 FPS sınırını kaldır | Açık | Safari'deki *"Prefer Page Rendering Updates near 60fps"* anahtarının aynısı. |
 | H.265 / AV1 kodekleri | Kapalı | Deneysel. Aynı bit hızında daha iyi görüntü verebilir. Sorun çıkarsa kapat. |
@@ -135,7 +135,9 @@ Akışla ilgili ayarlar (FPS, çözünürlük, kimlik, kodek) değişince sayfa 
 | Giriş penceresi kapanmıyor | Sağ üstteki **✕** ile kapat; giriş yine tamamlanmış olur. |
 | Sitedeki bir metin kutusuna (ör. NVIDIA girişinde e-posta) dokununca klavye açılmıyor | Klavye açılmazsa altta yeşil **⌨︎ Yaz** düğmesi çıkar: dokun, iPad'in kendi kutusuna yaz, **Tamam**'a bas, yazdığın sayfadaki kutuya geçer. Aynı şey menüde **"Metin kutusuna yaz"** olarak da var. Apple Pencil ile dokunursan iPad klavye yerine el yazısı (Karalama) açar, parmakla dokun. |
 | **Oyunun içindeki** bir kutuya (ör. Steam girişi) dokununca klavye açılmıyor | O kutu bir web kutusu değil, yayındaki videonun parçası. Şimdilik Bluetooth/Magic Keyboard gibi fiziksel bir klavye kullan. |
-| Giriş yaptıktan sonra bir ekranda takılı kalıyor | Menü ▸ **Sayfa bilgisi**: başlığı ve adresi gösterir, **Adresi kopyala** ile kopyalayıp bana gönderebilirsin. Geçici çözüm: Ayarlar ▸ Kimlik ▸ **iPad · Safari** ile giriş yap, giriş bitince **Windows PC · Chrome**'a geri dön; oturumun açık kalması gerekir. |
+| Giriş yaptıktan sonra bir ekranda takılı kalıyor | Menü ▸ **Sayfa bilgisi**: başlığı ve adresi gösterir, **Adresi kopyala** ile kopyalayıp bana gönderebilirsin. |
+| "Streaming games is not supported on this browser/device" | Ayarlar ▸ Kimlik ▸ **iPad · ana ekran uygulaması** seçili olsun (varsayılan). Eski sürümdeki Windows taklidini GFN yakalıyordu; kaldırıldı. |
+| GFN ayarlarında yalnızca **60 FPS** var | Normal: GFN'nin iPad menüsünde 120 yok. Sedef 120'yi oyun başlarken sunucuya giden istekte ayarlıyor; oyun açılınca altta "… @ 120 FPS istendi" yazısı çıkar, HUD'da **Akış** değerine bak. |
 | Google/Apple ile giriş açılmıyor | Google, uygulama içi tarayıcılardan girişi engelliyor. NVIDIA hesabının e-posta ve parolasıyla gir. |
 | Kontrolcü görünmüyor | Sayfa açıkken kontrolcüde bir tuşa bas. Tarayıcılar kontrolcüyü ancak ilk tuşa basınca görür. |
 
@@ -147,7 +149,9 @@ Akışla ilgili ayarlar (FPS, çözünürlük, kimlik, kodek) değişince sayfa 
 - **Fare kilidi (pointer lock) yok.** iPadOS'taki WebKit henüz bu özelliği desteklemiyor. Bu yüzden FPS oyunlarında fareyle kamera çevirmek düzgün çalışmaz. **Kontrolcü önerilir.** Klavye çalışır.
 - **WebKit'in 60 FPS ayarı özel (private) API'dir.** Bu yüzden uygulama App Store'a uygun değil, kişisel kullanım içindir. Yeni iPadOS sürümleri bu ayarı yok sayabilir. Video akışı WebKit'te ayrı bir video katmanında gösterildiği için bu teoride 120 FPS'i engellemez. Gerçekte ne olduğunu HUD'daki **"ekranda"** değeri gösterir.
 - Kod her değişiklikte GitHub'da bir Mac üzerinde derleniyor, ama gerçek bir iPad'de ve gerçek bir GFN oturumunda test edilmedi. Bir sorun olursa menüdeki **Sayfa bilgisi** ekranını bana gönder.
-- Kimlik (Windows/Chrome) **yalnızca GeForce NOW sayfalarına** gösterilir. NVIDIA, Google, Apple gibi giriş sayfaları gerçek iPad Safari'sini görür; giriş sistemleri tutarsız kimliklere takılabildiği için böyle yapıldı.
+- **Windows/Chrome taklidi yok.** GeForce NOW tarayıcı motorunu da inceliyor (Web Worker'daki `platform`, sistem sesleri, `window.chrome`); WebKit üzerinde Chrome taklidini "sahte" olarak işaretleyip yayını kapatıyor. Sedef bu yüzden gerçek bir WebKit tarayıcısı olarak kalıyor ve yalnızca GFN'nin iPad/Mac Safari kontrollerini karşılıyor.
+- Kimlik ayarları **yalnızca GeForce NOW sayfalarına** uygulanır; NVIDIA, Google, Apple gibi giriş sayfaları düz iPad Safari'sini görür.
+- **120 FPS'i sunucu verir.** GFN'nin iPad menüsü 60'ı gösterir; Sedef 120'yi oturum isteğinde ister. Sunucunun bunu iPad'den gelen bir istek için kabul edip etmediği ancak oyunda HUD'a bakarak anlaşılır.
 
 ---
 

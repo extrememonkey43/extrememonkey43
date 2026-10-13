@@ -114,10 +114,10 @@ function makeWindow(config, pageUrl = 'https://play.geforcenow.com/mall/') {
   return { window, fetchCalls, messages, FakeXHR, credentialCalls };
 }
 
-const windowsConfig = { fps: 120, identity: 'windowsChrome', reportWindows: true, chromeMajor: '140' };
+const defaultConfig = { fps: 120, identity: 'iPad', reportWindows: true };
 
 test('fetch: session request gets 120 FPS and the WINDOWS header', async () => {
-  const { window, fetchCalls, messages } = makeWindow(windowsConfig);
+  const { window, fetchCalls, messages } = makeWindow(defaultConfig);
   await window.fetch(SESSION_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'nv-device-os': 'IOS', 'nv-client-type': 'BROWSER' },
@@ -138,7 +138,7 @@ test('fetch: session request gets 120 FPS and the WINDOWS header', async () => {
 });
 
 test('fetch: Request object input with configured resolution', async () => {
-  const { window, fetchCalls } = makeWindow({ ...windowsConfig, width: 2560, height: 1440 });
+  const { window, fetchCalls } = makeWindow({ ...defaultConfig, width: 2560, height: 1440 });
   const request = new window.Request(SESSION_URL, { method: 'POST', headers: { 'nv-device-os': 'MACOS' }, body: sessionBody() });
   await window.fetch(request);
   const monitor = JSON.parse(fetchCalls[0].body).sessionRequestData.clientRequestMonitorSettings[0];
@@ -147,7 +147,7 @@ test('fetch: Request object input with configured resolution', async () => {
 });
 
 test('fetch: empty monitor list gets a complete entry', async () => {
-  const { window, fetchCalls } = makeWindow({ ...windowsConfig, width: 1920, height: 1080 });
+  const { window, fetchCalls } = makeWindow({ ...defaultConfig, width: 1920, height: 1080 });
   await window.fetch(SESSION_URL, { method: 'POST', body: JSON.stringify({ sessionRequestData: { clientRequestMonitorSettings: [] } }) });
   const monitor = JSON.parse(fetchCalls[0].body).sessionRequestData.clientRequestMonitorSettings[0];
   assert.equal(monitor.framesPerSecond, 120);
@@ -156,14 +156,14 @@ test('fetch: empty monitor list gets a complete entry', async () => {
 });
 
 test('fetch: ArrayBuffer body is rewritten too', async () => {
-  const { window, fetchCalls } = makeWindow(windowsConfig);
+  const { window, fetchCalls } = makeWindow(defaultConfig);
   await window.fetch(SESSION_URL, { method: 'POST', body: new TextEncoder().encode(sessionBody()).buffer });
   const monitor = JSON.parse(fetchCalls[0].body).sessionRequestData.clientRequestMonitorSettings[0];
   assert.equal(monitor.framesPerSecond, 120);
 });
 
 test('fetch: other hosts and other GFN endpoints are left alone', async () => {
-  const { window, fetchCalls } = makeWindow(windowsConfig);
+  const { window, fetchCalls } = makeWindow(defaultConfig);
   const body = sessionBody();
   await window.fetch('https://example.com/v2/session', { method: 'POST', body });
   await window.fetch('https://nvidiagrid.net.evil.com/v2/session', { method: 'POST', body });
@@ -175,7 +175,7 @@ test('fetch: other hosts and other GFN endpoints are left alone', async () => {
 });
 
 test('fetch: non-session JSON on the session URL is not touched', async () => {
-  const { window, fetchCalls, messages } = makeWindow(windowsConfig);
+  const { window, fetchCalls, messages } = makeWindow(defaultConfig);
   const body = JSON.stringify({ action: 2, sessionRequestData: { audioMode: 1 } });
   await window.fetch(SESSION_URL.replace('?', '/abc123?'), { method: 'PUT', body });
   assert.equal(fetchCalls[0].body, body);
@@ -193,7 +193,7 @@ test('iPad identity with fps "leave alone" changes nothing', async () => {
 });
 
 test('XMLHttpRequest session request is rewritten', () => {
-  const { window, FakeXHR } = makeWindow(windowsConfig);
+  const { window, FakeXHR } = makeWindow(defaultConfig);
   const xhr = new window.XMLHttpRequest();
   xhr.open('POST', SESSION_URL);
   xhr.setRequestHeader('nv-device-os', 'IOS');
@@ -208,15 +208,24 @@ test('XMLHttpRequest session request is rewritten', () => {
   assert.deepEqual(FakeXHR.sent[1].headers, {});
 });
 
-test('Windows identity spoofs navigator and adds a fullscreen shim', async () => {
-  const { window } = makeWindow(windowsConfig);
+test('iPad identity reports a Home Screen web app to GeForce NOW and nothing else', () => {
+  const { window } = makeWindow(defaultConfig);
   const nav = window.navigator;
-  assert.equal(nav.platform, 'Win32');
+  assert.equal(nav.standalone, true);
+  assert.equal(nav.maxTouchPoints, 5, 'touch points stay real');
+  assert.equal(nav.platform, 'MacIntel');
+  assert.equal(nav.vendor, 'Apple Computer, Inc.');
+  assert.equal(nav.userAgentData, undefined);
+  assert.equal(typeof window.Element.prototype.requestFullscreen, 'undefined', 'no fullscreen shim on iPad');
+});
+
+test('Mac identity hides touch, adds window.safari and a fullscreen shim', async () => {
+  const { window } = makeWindow({ ...defaultConfig, identity: 'macSafari' });
+  const nav = window.navigator;
   assert.equal(nav.maxTouchPoints, 0);
-  assert.equal(nav.vendor, 'Google Inc.');
-  assert.equal(nav.userAgentData.platform, 'Windows');
-  const high = await nav.userAgentData.getHighEntropyValues(['platformVersion']);
-  assert.equal(high.uaFullVersion, '140.0.0.0');
+  assert.equal(nav.platform, 'MacIntel');
+  assert.equal(nav.standalone, undefined);
+  assert.equal(typeof window.safari.pushNotification.permission, 'function');
 
   let changes = 0;
   window.document.addEventListener('fullscreenchange', () => changes++);
@@ -230,14 +239,14 @@ test('Windows identity spoofs navigator and adds a fullscreen shim', async () =>
 });
 
 test('script is idempotent', async () => {
-  const { window, fetchCalls } = makeWindow(windowsConfig);
-  vm.runInContext(core + '(' + JSON.stringify({ ...windowsConfig, fps: 60 }) + ');', window);
+  const { window, fetchCalls } = makeWindow(defaultConfig);
+  vm.runInContext(core + '(' + JSON.stringify({ ...defaultConfig, fps: 60 }) + ');', window);
   await window.fetch(SESSION_URL, { method: 'POST', body: sessionBody() });
   assert.equal(JSON.parse(fetchCalls[0].body).sessionRequestData.clientRequestMonitorSettings[0].framesPerSecond, 120);
 });
 
 test('text bridge reports focused fields and fills them like typing', () => {
-  const { window, messages } = makeWindow(windowsConfig);
+  const { window, messages } = makeWindow(defaultConfig);
   const email = new window.HTMLInputElement('email');
   window.document.fire('focusin', email);
   const focus = messages.filter((m) => m.type === 'editFocus');
@@ -255,7 +264,7 @@ test('text bridge reports focused fields and fills them like typing', () => {
 });
 
 test('text bridge never reports password values and ignores hidden fields', () => {
-  const { window, messages } = makeWindow(windowsConfig);
+  const { window, messages } = makeWindow(defaultConfig);
   const password = new window.HTMLInputElement('password');
   password.value = 'secret';
   window.document.fire('focusin', password);
@@ -271,7 +280,7 @@ test('text bridge never reports password values and ignores hidden fields', () =
 });
 
 test('passkey autofill requests stay pending; other credential requests pass through', async () => {
-  const { window, credentialCalls } = makeWindow(windowsConfig);
+  const { window, credentialCalls } = makeWindow(defaultConfig);
   assert.equal(await window.PublicKeyCredential.isConditionalMediationAvailable(), false);
   const conditional = window.navigator.credentials.get({ mediation: 'conditional', publicKey: {} });
   const outcome = await Promise.race([conditional.then(() => 'settled'), new Promise((r) => setTimeout(() => r('pending'), 50))]);
@@ -280,20 +289,18 @@ test('passkey autofill requests stay pending; other credential requests pass thr
   assert.equal(credentialCalls.length, 1);
 });
 
-test('sign-in pages keep the real iPad identity but still get the text bridge', () => {
-  const { window, messages } = makeWindow(windowsConfig, 'https://login.nvgs.nvidia.com/v1/login/identifier?locale=tr-TR');
+test('sign-in pages keep the plain iPad identity but still get the text bridge', () => {
+  const { window, messages } = makeWindow({ ...defaultConfig, identity: 'macSafari' }, 'https://login.nvgs.nvidia.com/v1/login/identifier?locale=tr-TR');
+  assert.equal(window.navigator.standalone, undefined, 'no web app flag off GFN');
   assert.equal(window.navigator.platform, 'MacIntel');
   assert.equal(window.navigator.maxTouchPoints, 5);
-  assert.equal(window.navigator.vendor, 'Apple Computer, Inc.');
-  assert.equal(window.navigator.userAgentData, undefined);
-  assert.equal(typeof window.Element.prototype.requestFullscreen, 'undefined', 'no fullscreen shim off GFN');
   const email = new window.HTMLInputElement('email');
   window.document.fire('focusin', email);
   assert.equal(messages.filter((m) => m.type === 'editFocus').length, 1);
 });
 
 test('aborting a passkey autofill request rejects it', async () => {
-  const { window } = makeWindow(windowsConfig, 'https://login.nvgs.nvidia.com/');
+  const { window } = makeWindow(defaultConfig, 'https://login.nvgs.nvidia.com/');
   const controller = new AbortController();
   const request = window.navigator.credentials.get({ mediation: 'conditional', signal: controller.signal, publicKey: {} });
   controller.abort();

@@ -35,10 +35,6 @@ final class BrowserViewController: UIViewController {
         return major + ".0"
     }()
 
-    /// WebKit lets each page load have its own user agent (Safari uses this for "Request Desktop
-    /// Website"). Private API; without it the identity falls back to the whole web view.
-    private static let perPageIdentity = WKWebpagePreferences().responds(to: NSSelectorFromString("_setCustomUserAgent:"))
-
     override var prefersStatusBarHidden: Bool { true }
     override var prefersHomeIndicatorAutoHidden: Bool { true }
     override var preferredScreenEdgesDeferringSystemGestures: UIRectEdge { .all }
@@ -113,7 +109,7 @@ final class BrowserViewController: UIViewController {
     }
 
     private func configure(_ webView: WKWebView) {
-        webView.customUserAgent = Self.perPageIdentity ? nil : settings.identity.userAgent(safariVersion: safariVersion)
+        webView.customUserAgent = nil
         webView.navigationDelegate = self
         webView.uiDelegate = self
         keyboardPolicy.attach(to: webView)
@@ -127,19 +123,6 @@ final class BrowserViewController: UIViewController {
         if #available(iOS 16.4, *) {
             // Lets you debug the page from Safari on a Mac (Develop menu).
             webView.isInspectable = true
-        }
-    }
-
-    /// GeForce NOW pages get the chosen identity; everything else (sign-in pages) the real iPad.
-    private func applyIdentity(to preferences: WKWebpagePreferences, for url: URL) {
-        let onGeForceNow = BrowserIdentity.appliesTo(url)
-        let userAgent = onGeForceNow ? settings.identity.userAgent(safariVersion: safariVersion) : nil
-        preferences.preferredContentMode = userAgent == nil ? .recommended : .desktop
-        guard Self.perPageIdentity, let userAgent else { return }
-        _ = preferences.perform(NSSelectorFromString("_setCustomUserAgent:"), with: userAgent)
-        let platformSetter = NSSelectorFromString("_setCustomNavigatorPlatform:")
-        if let platform = settings.identity.navigatorPlatform, preferences.responds(to: platformSetter) {
-            _ = preferences.perform(platformSetter, with: platform)
         }
     }
 
@@ -626,9 +609,6 @@ extension BrowserViewController: WKNavigationDelegate {
             UIApplication.shared.open(url)
             decisionHandler(.cancel, preferences)
             return
-        }
-        if navigationAction.targetFrame?.isMainFrame != false {
-            applyIdentity(to: preferences, for: url)
         }
         decisionHandler(.allow, preferences)
     }

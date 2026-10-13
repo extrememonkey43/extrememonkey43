@@ -77,7 +77,7 @@ struct SettingsView: View {
         } header: {
             Text("Kimlik")
         } footer: {
-            Text("GeForce NOW iPad'i tanıyınca 60 FPS ve düşük çözünürlükle sınırlar. \"Windows PC · Chrome\" bu sınırları kaldırmak için önerilen ayardır. Akış başlamazsa ya da siyah ekran kalırsa \"Mac · Safari\"yi dene.")
+            Text("GeForce NOW iPad'de yalnızca ana ekrana eklenmiş uygulamadan oyun açar; \"iPad · ana ekran uygulaması\" bunu sağlar. Windows/Chrome taklidi GeForce NOW tarafından yakalanıyor, o yüzden yok. \"Sunucuya Windows olarak bildir\", 120 FPS isteğinin sunucuda kabul edilmesi için oturum isteğindeki cihaz bilgisini değiştirir; oyun açılmazsa bunu kapatıp dene.")
         }
     }
 
