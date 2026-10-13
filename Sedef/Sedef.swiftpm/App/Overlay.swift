@@ -47,6 +47,22 @@ struct SessionRequest {
     }
 }
 
+/// A web text field that just got focus (see the injected script's text entry bridge).
+struct EditField {
+    var type: String
+    var value: String
+    var label: String
+
+    init?(_ payload: Any?) {
+        guard let dict = payload as? [String: Any], let type = dict["type"] as? String else { return nil }
+        self.type = type
+        value = dict["value"] as? String ?? ""
+        label = dict["label"] as? String ?? ""
+    }
+
+    var isPassword: Bool { type == "password" }
+}
+
 enum HUDText {
     static func make(displayHz: Double?, displayLocked: Bool, stats: StreamStats?, request: SessionRequest?) -> String {
         var lines: [String] = []

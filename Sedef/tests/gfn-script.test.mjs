@@ -30,8 +30,44 @@ function makeWindow(config) {
     Object.defineProperty(Navigator.prototype, prop, { configurable: true, get: () => value });
   }
   class Element {}
-  class Document extends EventTarget {}
+  class HTMLInputElement extends Element {
+    constructor(type = 'text', rect = { width: 300, height: 30, bottom: 400, right: 600 }) {
+      super();
+      this.tagName = 'INPUT';
+      this.type = type;
+      this.attrs = { type, placeholder: 'E-posta' };
+      this.rect = rect;
+      this.raw = '';
+      this.events = [];
+      this.isConnected = true;
+      this.disabled = false;
+      this.readOnly = false;
+      this.isContentEditable = false;
+    }
+    getAttribute(name) { return name in this.attrs ? this.attrs[name] : null; }
+    getBoundingClientRect() { return this.rect; }
+    focus() { this.focused = true; }
+    dispatchEvent(event) { this.events.push(event.type); return true; }
+  }
+  Object.defineProperty(HTMLInputElement.prototype, 'value', {
+    configurable: true,
+    get() { return this.raw; },
+    set(v) { this.raw = String(v); }
+  });
+  class HTMLTextAreaElement extends HTMLInputElement {}
+  class Document extends EventTarget {
+    addEventListener(type, listener, options) {
+      (this.listeners[type] ||= []).push(listener);
+      super.addEventListener(type, listener, options);
+    }
+    fire(type, target) { for (const l of this.listeners[type] || []) l({ type, target }); }
+  }
   const document = new Document();
+  document.listeners = {};
+  const credentialCalls = [];
+  class PublicKeyCredential {
+    static isConditionalMediationAvailable() { return Promise.resolve(true); }
+  }
   Object.assign(document, {
     readyState: 'complete',
     hidden: false,
@@ -54,6 +90,9 @@ function makeWindow(config) {
     Navigator,
     navigator: new Navigator(),
     Element,
+    HTMLInputElement,
+    HTMLTextAreaElement,
+    PublicKeyCredential,
     Document,
     document,
     XMLHttpRequest: FakeXHR,
@@ -68,10 +107,11 @@ function makeWindow(config) {
       return { ok: true };
     }
   };
+  window.navigator.credentials = { get: (options) => { credentialCalls.push(options); return Promise.resolve('credential'); } };
   window.window = window;
   vm.createContext(window);
   vm.runInContext(core + '(' + JSON.stringify(config) + ');', window);
-  return { window, fetchCalls, messages, FakeXHR };
+  return { window, fetchCalls, messages, FakeXHR, credentialCalls };
 }
 
 const windowsConfig = { fps: 120, identity: 'windowsChrome', reportWindows: true, chromeMajor: '140' };
@@ -194,4 +234,48 @@ test('script is idempotent', async () => {
   vm.runInContext(core + '(' + JSON.stringify({ ...windowsConfig, fps: 60 }) + ');', window);
   await window.fetch(SESSION_URL, { method: 'POST', body: sessionBody() });
   assert.equal(JSON.parse(fetchCalls[0].body).sessionRequestData.clientRequestMonitorSettings[0].framesPerSecond, 120);
+});
+
+test('text bridge reports focused fields and fills them like typing', () => {
+  const { window, messages } = makeWindow(windowsConfig);
+  const email = new window.HTMLInputElement('email');
+  window.document.fire('focusin', email);
+  const focus = messages.filter((m) => m.type === 'editFocus');
+  assert.equal(focus.length, 1);
+  assert.equal(focus[0].payload.type, 'email');
+  assert.equal(focus[0].payload.label, 'E-posta');
+
+  assert.equal(window.__sedefInsertText('yusuf@example.com'), true);
+  assert.equal(email.value, 'yusuf@example.com');
+  assert.deepEqual(email.events, ['input', 'change']);
+  assert.equal(email.focused, true);
+
+  window.document.fire('focusout', email);
+  assert.equal(messages.filter((m) => m.type === 'editBlur').length, 1);
+});
+
+test('text bridge never reports password values and ignores hidden fields', () => {
+  const { window, messages } = makeWindow(windowsConfig);
+  const password = new window.HTMLInputElement('password');
+  password.value = 'secret';
+  window.document.fire('focusin', password);
+  assert.equal(messages.find((m) => m.type === 'editFocus').payload.value, '');
+
+  const hidden = new window.HTMLInputElement('text', { width: 1, height: 1, bottom: 1, right: 1 });
+  window.document.fire('focusin', hidden);
+  const checkbox = new window.HTMLInputElement('checkbox');
+  window.document.fire('focusin', checkbox);
+  assert.equal(messages.filter((m) => m.type === 'editFocus').length, 1);
+  assert.equal(window.__sedefInsertText('x'), true, 'still targets the password field');
+  assert.equal(password.value, 'x');
+});
+
+test('passkey autofill requests stay pending; other credential requests pass through', async () => {
+  const { window, credentialCalls } = makeWindow(windowsConfig);
+  assert.equal(await window.PublicKeyCredential.isConditionalMediationAvailable(), false);
+  const conditional = window.navigator.credentials.get({ mediation: 'conditional', publicKey: {} });
+  const outcome = await Promise.race([conditional.then(() => 'settled'), new Promise((r) => setTimeout(() => r('pending'), 50))]);
+  assert.equal(outcome, 'pending');
+  assert.equal(await window.navigator.credentials.get({ publicKey: {} }), 'credential');
+  assert.equal(credentialCalls.length, 1);
 });

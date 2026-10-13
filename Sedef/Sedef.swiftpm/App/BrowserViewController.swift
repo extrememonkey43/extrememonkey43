@@ -19,6 +19,12 @@ final class BrowserViewController: UIViewController {
     private let hud = PaddedLabel()
     private let toast = PaddedLabel()
     private let menuButton = UIButton(type: .system)
+    private let typeButton = UIButton(type: .system)
+    private var editField: EditField?
+    private var lastEditField: EditField?
+    private weak var editWebView: WKWebView?
+    private var keyboardVisible = false
+    private var typeButtonTask: Task<Void, Never>?
     private var menuConstraints: [NSLayoutConstraint] = []
     private var fadeTask: Task<Void, Never>?
     private var toastTask: Task<Void, Never>?
@@ -164,9 +170,32 @@ final class BrowserViewController: UIViewController {
             hud.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -10),
             hud.widthAnchor.constraint(lessThanOrEqualToConstant: 360),
             toast.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            toast.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -48),
+            toast.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -100),
             toast.widthAnchor.constraint(lessThanOrEqualTo: view.widthAnchor, constant: -40),
         ])
+
+        // Fallback for when the iPad keyboard doesn't come up for a web text field.
+        var typeConfig = UIButton.Configuration.filled()
+        typeConfig.title = "Yaz"
+        typeConfig.image = UIImage(systemName: "keyboard")
+        typeConfig.imagePadding = 8
+        typeConfig.baseBackgroundColor = UIColor(red: 0.46, green: 0.73, blue: 0.0, alpha: 1)
+        typeConfig.baseForegroundColor = .black
+        typeConfig.cornerStyle = .capsule
+        typeConfig.contentInsets = NSDirectionalEdgeInsets(top: 12, leading: 22, bottom: 12, trailing: 22)
+        typeButton.configuration = typeConfig
+        typeButton.translatesAutoresizingMaskIntoConstraints = false
+        typeButton.isHidden = true
+        typeButton.alpha = 0
+        typeButton.addAction(UIAction { [weak self] _ in self?.presentTextPrompt() }, for: .primaryActionTriggered)
+        view.addSubview(typeButton)
+        NSLayoutConstraint.activate([
+            typeButton.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            typeButton.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -24),
+        ])
+
+        NotificationCenter.default.addObserver(self, selector: #selector(keyboardWillShow), name: UIResponder.keyboardWillShowNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(keyboardWillHide), name: UIResponder.keyboardWillHideNotification, object: nil)
 
         // Works even when the menu button is hidden; doesn't block touches meant for the game.
         let threeFingerHold = UILongPressGestureRecognizer(target: self, action: #selector(handleThreeFingerHold(_:)))
@@ -262,6 +291,11 @@ final class BrowserViewController: UIViewController {
             }
             items.append(back)
             items.append(UIAction(title: "GeForce NOW ana sayfası", image: UIImage(systemName: "house")) { [weak self] _ in self?.goHome() })
+            if self.lastEditField != nil {
+                items.append(UIAction(title: "Metin kutusuna yaz", image: UIImage(systemName: "keyboard")) { [weak self] _ in
+                    self?.presentTextPrompt()
+                })
+            }
             items.append(UIAction(
                 title: self.settings.showHUD ? "İstatistikleri gizle" : "İstatistikleri göster",
                 image: UIImage(systemName: "chart.bar.xaxis")
@@ -365,6 +399,18 @@ final class BrowserViewController: UIViewController {
         case "stats":
             streamStats = StreamStats(payload)
             renderHUD()
+            if streamStats != nil {
+                setTypeButtonVisible(false)
+            }
+        case "editFocus":
+            guard let field = EditField(payload) else { return }
+            editField = field
+            lastEditField = field
+            editWebView = message.webView
+            scheduleTypeButtonCheck(after: 0.8)
+        case "editBlur":
+            editField = nil
+            scheduleTypeButtonCheck(after: 0.3)
         case "session":
             guard let request = SessionRequest(payload) else { return }
             sessionRequest = request
@@ -378,6 +424,91 @@ final class BrowserViewController: UIViewController {
             print("[Sedef]", payload ?? "")
         default:
             break
+        }
+    }
+
+    // MARK: - Text entry fallback
+
+    @objc private func keyboardWillShow(_ notification: Notification) {
+        keyboardVisible = true
+        setTypeButtonVisible(false)
+    }
+
+    @objc private func keyboardWillHide(_ notification: Notification) {
+        keyboardVisible = false
+        scheduleTypeButtonCheck(after: 0.5)
+    }
+
+    /// Shows the "Yaz" button while a web text field is focused but no keyboard is on screen.
+    private func scheduleTypeButtonCheck(after seconds: Double) {
+        typeButtonTask?.cancel()
+        typeButtonTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+            guard !Task.isCancelled, let self else { return }
+            self.setTypeButtonVisible(self.editField != nil && !self.keyboardVisible && self.streamStats == nil)
+        }
+    }
+
+    private func setTypeButtonVisible(_ visible: Bool) {
+        if visible {
+            guard typeButton.isHidden || typeButton.alpha < 1 else { return }
+            typeButton.isHidden = false
+            UIView.animate(withDuration: 0.2) { self.typeButton.alpha = 1 }
+        } else {
+            guard !typeButton.isHidden else { return }
+            UIView.animate(withDuration: 0.2, animations: { self.typeButton.alpha = 0 }, completion: { _ in
+                if self.typeButton.alpha == 0 {
+                    self.typeButton.isHidden = true
+                }
+            })
+        }
+    }
+
+    /// The app's own text box; whatever is typed goes into the focused web field.
+    private func presentTextPrompt() {
+        guard let field = editField ?? lastEditField, topPresenter() === self else { return }
+        setTypeButtonVisible(false)
+
+        let alert = UIAlertController(title: field.isPassword ? "Parolayı yaz" : "Metni yaz", message: field.label.isEmpty ? nil : field.label, preferredStyle: .alert)
+        alert.addTextField { textField in
+            textField.text = field.value
+            textField.isSecureTextEntry = field.isPassword
+            textField.autocapitalizationType = .none
+            textField.autocorrectionType = .no
+            textField.spellCheckingType = .no
+            textField.clearButtonMode = .whileEditing
+            switch field.type {
+            case "email":
+                textField.keyboardType = .emailAddress
+                textField.textContentType = .emailAddress
+            case "password":
+                textField.textContentType = .password
+            case "url":
+                textField.keyboardType = .URL
+            case "number", "tel":
+                textField.keyboardType = .numbersAndPunctuation
+            default:
+                break
+            }
+        }
+        alert.addAction(UIAlertAction(title: "Vazgeç", style: .cancel))
+        let done = UIAlertAction(title: "Tamam", style: .default) { [weak self, weak alert] _ in
+            self?.insertIntoWebField(alert?.textFields?.first?.text ?? "")
+        }
+        alert.addAction(done)
+        alert.preferredAction = done
+        present(alert, animated: true)
+    }
+
+    private func insertIntoWebField(_ text: String) {
+        guard let target = editWebView ?? webView,
+              let data = try? JSONEncoder().encode(text),
+              let literal = String(data: data, encoding: .utf8)
+        else { return }
+        target.evaluateJavaScript("window.__sedefInsertText ? window.__sedefInsertText(\(literal)) : false") { [weak self] result, _ in
+            if (result as? Bool) != true {
+                self?.showToast("Metin kutusu bulunamadı. Kutuya tekrar dokun.")
+            }
         }
     }
 

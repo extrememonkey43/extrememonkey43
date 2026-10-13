@@ -12,7 +12,9 @@ import Foundation
 ///    `nv-device-os` header. This is the same trick desktop tools use, done inside the page.
 /// 3. Fullscreen shim: the app is already full screen, but desktop GFN calls
 ///    `requestFullscreen()`, which WKWebView on iPad doesn't expose.
-/// 4. Stats: reads WebRTC stats once a second and posts them to the native HUD.
+/// 4. Text entry: tells the app when a text field is focused, so it can offer its own text
+///    prompt when the iPad keyboard doesn't come up, and fills the field with the result.
+/// 5. Stats: reads WebRTC stats once a second and posts them to the native HUD.
 enum GFNScript {
     /// Builds the user script. `config` is serialized to JSON and handed to the IIFE.
     static func source(config: [String: Any]) -> String {
@@ -259,7 +261,72 @@ enum GFNScript {
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', addStyle, { once: true });
   else addStyle();
 
-  /* ---------- 5. Stream stats for the HUD ---------- */
+  /* ---------- 5. Text entry bridge ---------- */
+  // If the iPad keyboard doesn't come up for a web text field, the app offers its own text
+  // prompt and puts the result into the field through window.__sedefInsertText.
+  var lastEditable = null;
+  function isEditable(el) {
+    if (!el || el.disabled || el.readOnly) return false;
+    if (el.isContentEditable) return true;
+    if (el.tagName === 'TEXTAREA') return true;
+    return el.tagName === 'INPUT' && /^(text|email|password|search|tel|url|number)?$/i.test(el.getAttribute('type') || '');
+  }
+  function isVisible(el) {
+    try {
+      var r = el.getBoundingClientRect();
+      return r.width >= 20 && r.height >= 10 && r.bottom > 0 && r.right > 0;
+    } catch (e) { return false; }
+  }
+  document.addEventListener('focusin', function (e) {
+    var el = e.target;
+    if (!isEditable(el) || !isVisible(el)) return;
+    lastEditable = el;
+    var type = el.isContentEditable ? 'text' : (el.tagName === 'TEXTAREA' ? 'textarea' : String(el.type || 'text').toLowerCase());
+    post('editFocus', {
+      type: type,
+      value: type === 'password' || el.isContentEditable ? '' : String(el.value || ''),
+      label: el.getAttribute('placeholder') || el.getAttribute('aria-label') || ''
+    });
+  }, true);
+  document.addEventListener('focusout', function (e) {
+    if (e.target === lastEditable) post('editBlur', null);
+  }, true);
+  try {
+    Object.defineProperty(window, '__sedefInsertText', {
+      value: function (text) {
+        var el = lastEditable;
+        if (!el || !el.isConnected) return false;
+        try { el.focus({ preventScroll: true }); } catch (e) {}
+        if (el.isContentEditable) return document.execCommand('insertText', false, text);
+        // Use the native setter so frameworks (Angular, React) notice the change.
+        var proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+        Object.getOwnPropertyDescriptor(proto, 'value').set.call(el, text);
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+        return true;
+      }
+    });
+  } catch (e) {}
+
+  /* ---------- 6. Passkey autofill off ---------- */
+  // Passkeys can't work in an app's web view without Apple entitlements. Sign-in pages that ask
+  // for passkey autofill (autocomplete="webauthn") get a request that simply never completes,
+  // which is exactly what happens when the user doesn't pick a passkey.
+  try {
+    if (window.PublicKeyCredential && typeof window.PublicKeyCredential.isConditionalMediationAvailable === 'function') {
+      window.PublicKeyCredential.isConditionalMediationAvailable = function () { return Promise.resolve(false); };
+    }
+    var credentials = navigator.credentials;
+    if (credentials && typeof credentials.get === 'function') {
+      var credentialsGet = credentials.get;
+      credentials.get = function (options) {
+        if (options && options.mediation === 'conditional') return new Promise(function () {});
+        return credentialsGet.apply(this, arguments);
+      };
+    }
+  } catch (e) {}
+
+  /* ---------- 7. Stream stats for the HUD ---------- */
   var peers = [];
   var PC = window.RTCPeerConnection;
   if (PC && PC.prototype) {

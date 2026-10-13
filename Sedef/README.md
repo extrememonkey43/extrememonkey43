@@ -125,7 +125,7 @@ Akışla ilgili ayarlar (FPS, çözünürlük, kimlik, kodek) değişince sayfa 
 | HUD'da **Ekran 60 Hz** | Düşük Güç Modu açık, *Kare Hızını Sınırla* açık ya da iPad ısınmış. |
 | "İstek …" satırı hiç çıkmıyor | GFN bir güncelleme ile istek biçimini değiştirmiş olabilir. Sayfayı yenile; devam ederse betiğin güncellenmesi gerekir. |
 | Giriş penceresi kapanmıyor | Sağ üstteki **✕** ile kapat; giriş yine tamamlanmış olur. |
-| Sitedeki bir metin kutusuna dokununca klavye açılmıyor | Sedef 1.0'daki hata; güncel paketle düzeldi. Hâlâ olursa kutunun dışına, sonra tekrar kutuya dokun. |
+| Sitedeki bir metin kutusuna (ör. NVIDIA girişinde e-posta) dokununca klavye açılmıyor | Klavye açılmazsa altta yeşil **⌨︎ Yaz** düğmesi çıkar: dokun, iPad'in kendi kutusuna yaz, **Tamam**'a bas, yazdığın sayfadaki kutuya geçer. Aynı şey menüde **"Metin kutusuna yaz"** olarak da var. Apple Pencil ile dokunursan iPad klavye yerine el yazısı (Karalama) açar, parmakla dokun. |
 | **Oyunun içindeki** bir kutuya (ör. Steam girişi) dokununca klavye açılmıyor | O kutu bir web kutusu değil, yayındaki videonun parçası. Şimdilik Bluetooth/Magic Keyboard gibi fiziksel bir klavye kullan. |
 | Kontrolcü görünmüyor | Sayfa açıkken kontrolcüde bir tuşa bas. Tarayıcılar kontrolcüyü ancak ilk tuşa basınca görür. |
 
