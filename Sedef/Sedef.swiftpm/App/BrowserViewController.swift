@@ -29,6 +29,16 @@ final class BrowserViewController: UIViewController {
     private var fadeTask: Task<Void, Never>?
     private var toastTask: Task<Void, Never>?
 
+    /// iPadOS 26 ships Safari 26, so the OS major version is the Safari version.
+    private let safariVersion: String = {
+        let major = UIDevice.current.systemVersion.split(separator: ".").first.map(String.init) ?? "26"
+        return major + ".0"
+    }()
+
+    /// WebKit lets each page load have its own user agent (Safari uses this for "Request Desktop
+    /// Website"). Private API; without it the identity falls back to the whole web view.
+    private static let perPageIdentity = WKWebpagePreferences().responds(to: NSSelectorFromString("_setCustomUserAgent:"))
+
     override var prefersStatusBarHidden: Bool { true }
     override var prefersHomeIndicatorAutoHidden: Bool { true }
     override var preferredScreenEdgesDeferringSystemGestures: UIRectEdge { .all }
@@ -81,7 +91,10 @@ final class BrowserViewController: UIViewController {
         configuration.allowsPictureInPictureMediaPlayback = false
         configuration.websiteDataStore = .default()
         configuration.preferences.javaScriptCanOpenWindowsAutomatically = true
-        configuration.defaultWebpagePreferences.preferredContentMode = settings.identity == .iPad ? .recommended : .desktop
+        configuration.defaultWebpagePreferences.preferredContentMode = .recommended
+        // A plain WKWebView leaves "Version/… Safari/…" out of its user agent; sign-in pages
+        // (Google in particular) treat that as an embedded browser. Match real Safari.
+        configuration.applicationNameForUserAgent = "Version/\(safariVersion) Safari/605.1.15"
 
         let contentController = WKUserContentController()
         contentController.add(ScriptMessageProxy(self), name: "sedef")
@@ -100,7 +113,7 @@ final class BrowserViewController: UIViewController {
     }
 
     private func configure(_ webView: WKWebView) {
-        webView.customUserAgent = settings.identity.userAgent
+        webView.customUserAgent = Self.perPageIdentity ? nil : settings.identity.userAgent(safariVersion: safariVersion)
         webView.navigationDelegate = self
         webView.uiDelegate = self
         keyboardPolicy.attach(to: webView)
@@ -114,6 +127,19 @@ final class BrowserViewController: UIViewController {
         if #available(iOS 16.4, *) {
             // Lets you debug the page from Safari on a Mac (Develop menu).
             webView.isInspectable = true
+        }
+    }
+
+    /// GeForce NOW pages get the chosen identity; everything else (sign-in pages) the real iPad.
+    private func applyIdentity(to preferences: WKWebpagePreferences, for url: URL) {
+        let onGeForceNow = BrowserIdentity.appliesTo(url)
+        let userAgent = onGeForceNow ? settings.identity.userAgent(safariVersion: safariVersion) : nil
+        preferences.preferredContentMode = userAgent == nil ? .recommended : .desktop
+        guard Self.perPageIdentity, let userAgent else { return }
+        _ = preferences.perform(NSSelectorFromString("_setCustomUserAgent:"), with: userAgent)
+        let platformSetter = NSSelectorFromString("_setCustomNavigatorPlatform:")
+        if let platform = settings.identity.navigatorPlatform, preferences.responds(to: platformSetter) {
+            _ = preferences.perform(platformSetter, with: platform)
         }
     }
 
@@ -300,6 +326,9 @@ final class BrowserViewController: UIViewController {
                 title: self.settings.showHUD ? "İstatistikleri gizle" : "İstatistikleri göster",
                 image: UIImage(systemName: "chart.bar.xaxis")
             ) { [weak self] _ in self?.toggleHUD() })
+            items.append(UIAction(title: "Sayfa bilgisi", image: UIImage(systemName: "info.circle")) { [weak self] _ in
+                self?.showPageInfo()
+            })
             items.append(UIAction(title: "Menü düğmesini gizle", image: UIImage(systemName: "eye.slash")) { [weak self] _ in
                 self?.hideMenuButton()
             })
@@ -342,6 +371,31 @@ final class BrowserViewController: UIViewController {
         } else {
             webView?.reload()
         }
+    }
+
+    /// Where the page is stuck, in a form that's easy to copy and send.
+    private func showPageInfo() {
+        guard let webView, topPresenter() === self else { return }
+        let url = webView.url?.absoluteString ?? "—"
+        let shownURL = url.count > 160 ? String(url.prefix(160)) + "…" : url
+        let identity: String
+        if let pageURL = webView.url, BrowserIdentity.appliesTo(pageURL) {
+            identity = settings.identity.title
+        } else {
+            identity = "iPad Safari (giriş sayfaları için)"
+        }
+        let message = [
+            "Başlık: \(webView.title ?? "—")",
+            "Adres: \(shownURL)",
+            "Kimlik: \(identity)",
+            "iPadOS \(UIDevice.current.systemVersion)",
+        ].joined(separator: "\n\n")
+        let alert = UIAlertController(title: "Sayfa bilgisi", message: message, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "Adresi kopyala", style: .default) { _ in
+            UIPasteboard.general.string = url
+        })
+        alert.addAction(UIAlertAction(title: "Kapat", style: .cancel))
+        present(alert, animated: true)
     }
 
     private func goHome() {
@@ -562,18 +616,21 @@ final class BrowserViewController: UIViewController {
 // MARK: - WKNavigationDelegate
 
 extension BrowserViewController: WKNavigationDelegate {
-    func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+    func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, preferences: WKWebpagePreferences, decisionHandler: @escaping (WKNavigationActionPolicy, WKWebpagePreferences) -> Void) {
         guard let url = navigationAction.request.url, let scheme = url.scheme?.lowercased() else {
-            decisionHandler(.allow)
+            decisionHandler(.allow, preferences)
             return
         }
-        if ["http", "https", "about", "blob", "data", "javascript"].contains(scheme) {
-            decisionHandler(.allow)
-        } else {
+        guard ["http", "https", "about", "blob", "data", "javascript"].contains(scheme) else {
             // App Store links, mailto: and the like go to the system.
             UIApplication.shared.open(url)
-            decisionHandler(.cancel)
+            decisionHandler(.cancel, preferences)
+            return
         }
+        if navigationAction.targetFrame?.isMainFrame != false {
+            applyIdentity(to: preferences, for: url)
+        }
+        decisionHandler(.allow, preferences)
     }
 
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {

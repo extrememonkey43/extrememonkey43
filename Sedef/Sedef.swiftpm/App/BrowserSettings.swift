@@ -21,15 +21,33 @@ enum BrowserIdentity: String, CaseIterable, Identifiable {
         }
     }
 
-    var userAgent: String? {
+    /// User agent for GeForce NOW pages; nil keeps the real iPad Safari one.
+    /// `safariVersion` follows the OS (iPadOS 26 ships Safari 26).
+    func userAgent(safariVersion: String) -> String? {
         switch self {
         case .windowsChrome:
             return "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/\(Self.chromeMajor).0.0.0 Safari/537.36"
         case .macSafari:
-            return "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15"
+            return "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/\(safariVersion) Safari/605.1.15"
         case .iPad:
             return nil
         }
+    }
+
+    /// `navigator.platform` for GeForce NOW pages; nil keeps the real one.
+    var navigatorPlatform: String? {
+        switch self {
+        case .windowsChrome: return "Win32"
+        case .macSafari: return "MacIntel"
+        case .iPad: return nil
+        }
+    }
+
+    /// The identity is only shown to GeForce NOW itself. Sign-in pages (NVIDIA, Google, Apple…)
+    /// see the real iPad Safari, which is what they are tested against.
+    static func appliesTo(_ url: URL) -> Bool {
+        guard let host = url.host?.lowercased() else { return false }
+        return host == "geforcenow.com" || host.hasSuffix(".geforcenow.com")
     }
 }
 

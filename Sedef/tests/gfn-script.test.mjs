@@ -22,7 +22,7 @@ function sessionBody(monitor = { widthInPixels: 1600, heightInPixels: 1200, fram
   });
 }
 
-function makeWindow(config) {
+function makeWindow(config, pageUrl = 'https://play.geforcenow.com/mall/') {
   const fetchCalls = [];
   const messages = [];
   class Navigator {}
@@ -86,7 +86,7 @@ function makeWindow(config) {
   FakeXHR.sent = [];
 
   const window = {
-    location: { href: 'https://play.geforcenow.com/mall/' },
+    location: new URL(pageUrl),
     Navigator,
     navigator: new Navigator(),
     Element,
@@ -96,7 +96,7 @@ function makeWindow(config) {
     Document,
     document,
     XMLHttpRequest: FakeXHR,
-    Request, Headers, Blob, TextDecoder, URL, Promise, JSON, Object, Array, String, WeakMap, ArrayBuffer, Event,
+    Request, Headers, Blob, TextDecoder, URL, Promise, JSON, Object, Array, String, WeakMap, ArrayBuffer, Event, DOMException,
     performance,
     setInterval: () => 0,
     console,
@@ -278,4 +278,27 @@ test('passkey autofill requests stay pending; other credential requests pass thr
   assert.equal(outcome, 'pending');
   assert.equal(await window.navigator.credentials.get({ publicKey: {} }), 'credential');
   assert.equal(credentialCalls.length, 1);
+});
+
+test('sign-in pages keep the real iPad identity but still get the text bridge', () => {
+  const { window, messages } = makeWindow(windowsConfig, 'https://login.nvgs.nvidia.com/v1/login/identifier?locale=tr-TR');
+  assert.equal(window.navigator.platform, 'MacIntel');
+  assert.equal(window.navigator.maxTouchPoints, 5);
+  assert.equal(window.navigator.vendor, 'Apple Computer, Inc.');
+  assert.equal(window.navigator.userAgentData, undefined);
+  assert.equal(typeof window.Element.prototype.requestFullscreen, 'undefined', 'no fullscreen shim off GFN');
+  const email = new window.HTMLInputElement('email');
+  window.document.fire('focusin', email);
+  assert.equal(messages.filter((m) => m.type === 'editFocus').length, 1);
+});
+
+test('aborting a passkey autofill request rejects it', async () => {
+  const { window } = makeWindow(windowsConfig, 'https://login.nvgs.nvidia.com/');
+  const controller = new AbortController();
+  const request = window.navigator.credentials.get({ mediation: 'conditional', signal: controller.signal, publicKey: {} });
+  controller.abort();
+  await assert.rejects(request, (error) => error.name === 'AbortError');
+  const already = new AbortController();
+  already.abort();
+  await assert.rejects(window.navigator.credentials.get({ mediation: 'conditional', signal: already.signal }), (error) => error.name === 'AbortError');
 });

@@ -3,8 +3,9 @@ import Foundation
 /// JavaScript injected at document start into play.geforcenow.com.
 ///
 /// What it does, in order:
-/// 1. Identity: makes the page believe it runs on a desktop (Windows/Chrome or Mac/Safari),
-///    so GeForce NOW stops applying its iPad/Safari limits (60 FPS, 1600×1200, H.264 only).
+/// 1. Identity: makes GeForce NOW believe it runs on a desktop (Windows/Chrome or Mac/Safari),
+///    so it stops applying its iPad/Safari limits (60 FPS, 1600×1200, H.264 only). Only on
+///    geforcenow.com; sign-in pages keep the real iPad identity.
 /// 2. Session request: GeForce NOW asks its servers for a stream with a POST to
 ///    `https://<zone>.nvidiagrid.net/v2/session`. The body carries
 ///    `sessionRequestData.clientRequestMonitorSettings[0].framesPerSecond`. We rewrite that
@@ -37,7 +38,9 @@ enum GFNScript {
   try { Object.defineProperty(window, '__sedefInstalled', { value: true }); } catch (e) {}
 
   CFG = CFG || {};
-  var desktop = CFG.identity === 'windowsChrome' || CFG.identity === 'macSafari';
+  // The identity is only for GeForce NOW itself; sign-in pages keep the real iPad Safari.
+  var onGeForceNow = /(^|\.)geforcenow\.com$/i.test(location.hostname);
+  var desktop = onGeForceNow && (CFG.identity === 'windowsChrome' || CFG.identity === 'macSafari');
 
   function post(type, payload) {
     try {
@@ -58,7 +61,7 @@ enum GFNScript {
     override(navProto, 'maxTouchPoints', 0);
     override(navProto, 'platform', CFG.identity === 'windowsChrome' ? 'Win32' : 'MacIntel');
   }
-  if (navProto && CFG.identity === 'windowsChrome') {
+  if (navProto && desktop && CFG.identity === 'windowsChrome') {
     var major = String(CFG.chromeMajor || '140');
     var brands = [
       { brand: 'Chromium', version: major },
@@ -310,8 +313,8 @@ enum GFNScript {
 
   /* ---------- 6. Passkey autofill off ---------- */
   // Passkeys can't work in an app's web view without Apple entitlements. Sign-in pages that ask
-  // for passkey autofill (autocomplete="webauthn") get a request that simply never completes,
-  // which is exactly what happens when the user doesn't pick a passkey.
+  // for passkey autofill (autocomplete="webauthn") get a request that stays pending, which is
+  // what happens when the user doesn't pick a passkey, and that rejects when the page aborts it.
   try {
     if (window.PublicKeyCredential && typeof window.PublicKeyCredential.isConditionalMediationAvailable === 'function') {
       window.PublicKeyCredential.isConditionalMediationAvailable = function () { return Promise.resolve(false); };
@@ -320,7 +323,17 @@ enum GFNScript {
     if (credentials && typeof credentials.get === 'function') {
       var credentialsGet = credentials.get;
       credentials.get = function (options) {
-        if (options && options.mediation === 'conditional') return new Promise(function () {});
+        if (options && options.mediation === 'conditional') {
+          var signal = options.signal;
+          return new Promise(function (resolve, reject) {
+            var abort = function () {
+              reject(signal && signal.reason !== undefined ? signal.reason : new DOMException('The operation was aborted.', 'AbortError'));
+            };
+            if (!signal) return;
+            if (signal.aborted) abort();
+            else signal.addEventListener('abort', abort, { once: true });
+          });
+        }
         return credentialsGet.apply(this, arguments);
       };
     }

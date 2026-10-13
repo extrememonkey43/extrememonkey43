@@ -27,11 +27,14 @@ jobs:
       - name: Xcode version
         run: xcodebuild -version
 
-      - name: Generate Xcode project
+      # The project is committed; generate it only if it's missing.
+      - name: Generate Xcode project if missing
         working-directory: Sedef/Xcode
         run: |
-          brew install xcodegen
-          xcodegen generate
+          if [ ! -d Sedef.xcodeproj ]; then
+            brew install xcodegen
+            xcodegen generate
+          fi
 
       - name: Build
         working-directory: Sedef/Xcode
@@ -39,10 +42,10 @@ jobs:
           set -o pipefail
           xcodebuild \
             -project Sedef.xcodeproj \
-            -target Sedef \
+            -scheme Sedef \
             -configuration Release \
-            -sdk iphoneos \
-            SYMROOT="$PWD/build" \
+            -destination "generic/platform=iOS" \
+            -derivedDataPath "$RUNNER_TEMP/dd" \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
@@ -51,18 +54,30 @@ jobs:
           grep -E "\.swift:[0-9]+:[0-9]+: warning" build.log | sort -u || true
 
       - name: Package IPA
-        working-directory: Sedef/Xcode
         run: |
           rm -rf Payload
           mkdir Payload
-          cp -R build/Release-iphoneos/Sedef.app Payload/
-          zip -qry "$GITHUB_WORKSPACE/Sedef.ipa" Payload
-          ls -lh "$GITHUB_WORKSPACE/Sedef.ipa"
+          cp -R "$RUNNER_TEMP/dd/Build/Products/Release-iphoneos/Sedef.app" Payload/
+          zip -qry Sedef.ipa Payload
+          ls -lh Sedef.ipa
 
       - uses: actions/upload-artifact@v4
         with:
           name: Sedef-ipa
           path: Sedef.ipa
+          if-no-files-found: error
+
+      # Ready-to-open Xcode project (project + shared sources + assets).
+      - name: Package Xcode project
+        run: |
+          rm -rf Sedef/Xcode/build.log
+          zip -qry Sedef-Xcode.zip Sedef -x "Sedef/tests/*"
+          ls -lh Sedef-Xcode.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Sedef-Xcode
+          path: Sedef-Xcode.zip
           if-no-files-found: error
 
       # Informational: checks that the Swift Playgrounds package itself builds.
@@ -71,6 +86,5 @@ jobs:
         working-directory: Sedef/Sedef.swiftpm
         run: |
           set -o pipefail
-          xcodebuild -list
           xcodebuild -scheme Sedef -destination "generic/platform=iOS" -derivedDataPath "$RUNNER_TEMP/swiftpm" \
-            CODE_SIGNING_ALLOWED=NO build | tail -n 40
+            CODE_SIGNING_ALLOWED=NO build | tail -n 5

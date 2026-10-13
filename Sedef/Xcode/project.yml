@@ -1,4 +1,5 @@
-# XcodeGen spec for building an installable .ipa (used by CI; also works on a Mac).
+# XcodeGen spec. The generated Sedef.xcodeproj is committed, so Xcode users don't need XcodeGen;
+# after changing this file run `xcodegen generate` in this folder and commit the result.
 # The Swift sources are shared with the Swift Playgrounds package in ../Sedef.swiftpm.
 name: Sedef
 options:
@@ -7,8 +8,8 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.0"
-    MARKETING_VERSION: "1.0"
-    CURRENT_PROJECT_VERSION: "1"
+    MARKETING_VERSION: "1.1"
+    CURRENT_PROJECT_VERSION: "2"
 targets:
   Sedef:
     type: application
@@ -42,7 +43,20 @@ targets:
           - UIInterfaceOrientationPortraitUpsideDown
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: app.sedef.browser
+        # Free Apple IDs need a bundle identifier nobody else has registered; change it if
+        # Xcode reports a conflict.
+        PRODUCT_BUNDLE_IDENTIFIER: io.github.extrememonkey43.sedef
         TARGETED_DEVICE_FAMILY: "1,2"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         GENERATE_INFOPLIST_FILE: NO
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: ""
+schemes:
+  Sedef:
+    build:
+      targets:
+        Sedef: all
+    run:
+      config: Debug
+    archive:
+      config: Release
