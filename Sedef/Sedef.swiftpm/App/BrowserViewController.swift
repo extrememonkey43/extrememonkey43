@@ -11,6 +11,7 @@ final class BrowserViewController: UIViewController {
     private var appliedWebKitFlags: [String] = []
 
     private let booster = DisplayRateBooster()
+    private let keyboardPolicy = KeyboardFocusPolicy()
     private var measuredHz: Double?
     private var streamStats: StreamStats?
     private var sessionRequest: SessionRequest?
@@ -96,6 +97,7 @@ final class BrowserViewController: UIViewController {
         webView.customUserAgent = settings.identity.userAgent
         webView.navigationDelegate = self
         webView.uiDelegate = self
+        keyboardPolicy.attach(to: webView)
         webView.allowsBackForwardNavigationGestures = false
         webView.allowsLinkPreview = false
         webView.isOpaque = false
@@ -172,8 +174,12 @@ final class BrowserViewController: UIViewController {
         threeFingerHold.minimumPressDuration = 0.8
         threeFingerHold.cancelsTouchesInView = false
         threeFingerHold.delaysTouchesBegan = false
+        threeFingerHold.delaysTouchesEnded = false
         threeFingerHold.delegate = self
         view.addGestureRecognizer(threeFingerHold)
+
+        // Lets text fields open the keyboard even when the page focuses them a moment late.
+        view.addGestureRecognizer(TouchClockRecognizer.make())
     }
 
     private func applyOverlaySettings() {
@@ -380,6 +386,7 @@ final class BrowserViewController: UIViewController {
     private func presentPopup(_ popup: WKWebView) {
         let controller = UIViewController()
         controller.view.backgroundColor = .systemBackground
+        controller.view.addGestureRecognizer(TouchClockRecognizer.make())
         popup.translatesAutoresizingMaskIntoConstraints = false
         controller.view.addSubview(popup)
         NSLayoutConstraint.activate([
